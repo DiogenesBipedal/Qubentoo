@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+# Xen common infrastructure (evtchn device, xenfs, privcmd)
+
+description="Xen common dom0 infrastructure"
+
+depend() {
+	need xenstored
+	before xenconsoled xendomains
+	keyword -lxc -openvz -prefix -vserver
+}
+
+start() {
+	ebegin "Starting Xen common infrastructure"
+
+	# Load required kernel modules
+	for mod in xen-evtchn xen-gntdev xen-gntalloc xen-blkback xen-netback; do
+		modprobe "${mod}" 2>/dev/null || true
+	done
+
+	# Ensure /dev/xen devices exist
+	if [[ ! -c /dev/xen/evtchn ]]; then
+		ewarn "/dev/xen/evtchn missing — check CONFIG_XEN_DEV_EVTCHN"
+	fi
+
+	eend 0
+}
+
+stop() {
+	ebegin "Stopping Xen common infrastructure"
+	eend 0
+}

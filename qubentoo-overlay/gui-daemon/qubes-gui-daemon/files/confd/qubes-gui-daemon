@@ -1,0 +1,11 @@
+# /etc/conf.d/qubes-gui-daemon
+
+# X11 display where dom0 desktop runs
+QUBES_GUI_DISPLAY=":0"
+
+# Xauthority file for the display manager session
+# Adjust to match your display manager (lightdm/gdm/slim/startx)
+QUBES_GUI_XAUTHORITY="/var/run/lightdm/root/:0"
+
+# Log level: 0=errors only, 1=info, 2=debug
+QUBES_GUI_LOG_LEVEL="1"

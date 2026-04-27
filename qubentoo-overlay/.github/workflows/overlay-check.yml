@@ -1,0 +1,279 @@
+name: Overlay QA Check
+
+# Runs on every push and pull request that touches overlay files.
+# Also runs weekly to catch regressions from upstream Gentoo tree changes.
+
+on:
+  push:
+    branches: [ main, dev, 'feature/**' ]
+    paths:
+      - '**.ebuild'
+      - 'eclass/**'
+      - 'profiles/**'
+      - 'metadata/**'
+      - 'scripts/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.ebuild'
+      - 'eclass/**'
+      - 'profiles/**'
+      - 'metadata/**'
+  schedule:
+    # Weekly on Monday 03:00 UTC — catches upstream tree breakage
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    # Allow manual trigger from the Actions tab
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: repoman overlay scan
+  # ---------------------------------------------------------------------------
+  repoman-scan:
+    name: repoman QA scan
+    runs-on: ubuntu-latest
+    container:
+      image: gentoo/stage3:amd64-hardened-openrc
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+        with:
+          path: qubentoo-overlay
+
+      - name: Update Portage tree
+        run: |
+          emerge-webrsync --quiet 2>&1 | tail -5 || \
+          emaint sync -a --quiet 2>&1 | tail -5
+
+      - name: Install repoman
+        run: emerge --quiet --noreplace dev-util/repoman
+
+      - name: Register overlay
+        run: |
+          emerge --quiet --noreplace app-eselect/eselect-repository
+          eselect repository create qubentoo \
+            "${GITHUB_WORKSPACE}/qubentoo-overlay"
+          emaint sync -r qubentoo 2>/dev/null || true
+
+      - name: Run repoman scan
+        working-directory: qubentoo-overlay
+        run: |
+          OVERLAY_DIR="${GITHUB_WORKSPACE}/qubentoo-overlay" \
+            bash scripts/verify-overlay.sh 2>&1 | tee repoman-report.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload repoman report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repoman-report
+          path: qubentoo-overlay/repoman-report.txt
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 2: ebuild manifest validation
+  # ---------------------------------------------------------------------------
+  manifest-check:
+    name: Manifest integrity
+    runs-on: ubuntu-latest
+    container:
+      image: gentoo/stage3:amd64-hardened-openrc
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+        with:
+          path: qubentoo-overlay
+
+      - name: Update Portage tree
+        run: |
+          emerge-webrsync --quiet 2>&1 | tail -5 || \
+          emaint sync -a --quiet 2>&1 | tail -5
+
+      - name: Register overlay
+        run: |
+          emerge --quiet --noreplace app-eselect/eselect-repository
+          eselect repository create qubentoo \
+            "${GITHUB_WORKSPACE}/qubentoo-overlay"
+
+      - name: Validate Manifest files
+        working-directory: qubentoo-overlay
+        run: |
+          # Verify existing Manifests are up to date (do not re-fetch distfiles)
+          FEATURES="digest -distlocks" \
+          OVERLAY_DIR="${GITHUB_WORKSPACE}/qubentoo-overlay" \
+            bash scripts/gen-manifests.sh 2>&1 | tee manifest-gen.log
+
+      - name: Upload manifest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-gen-log
+          path: qubentoo-overlay/manifest-gen.log
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Python version consistency lint
+  # ---------------------------------------------------------------------------
+  python-compat-lint:
+    name: Python COMPAT consistency
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+
+      - name: Check PYTHON_COMPAT declarations
+        run: |
+          set -euo pipefail
+          expected="python3_10 python3_11 python3_12"
+          failed=0
+          while IFS= read -r -d '' ebuild; do
+            if grep -q 'python-single-r1\|python_r1' "${ebuild}"; then
+              compat=$(grep -oP 'PYTHON_COMPAT=\([^)]+\)' "${ebuild}" | head -1 || true)
+              if [[ -z "${compat}" ]]; then
+                echo "::warning file=${ebuild}::No PYTHON_COMPAT found in Python ebuild"
+                continue
+              fi
+              for pyver in python3_10 python3_11 python3_12; do
+                if ! echo "${compat}" | grep -q "${pyver}"; then
+                  echo "::error file=${ebuild}::Missing ${pyver} in PYTHON_COMPAT: ${compat}"
+                  failed=1
+                fi
+              done
+            fi
+          done < <(find . -name "*.ebuild" -print0)
+          exit ${failed}
+
+  # ---------------------------------------------------------------------------
+  # Job 4: OpenRC init script syntax check
+  # ---------------------------------------------------------------------------
+  openrc-syntax:
+    name: OpenRC init script syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+
+      - name: Syntax check all init scripts
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r -d '' script; do
+            if bash -n "${script}" 2>/dev/null; then
+              echo "OK: ${script}"
+            else
+              echo "::error file=${script}::bash syntax error"
+              failed=1
+            fi
+          done < <(find . -path "*/files/openrc/*" -type f -print0)
+          # Also check conf.d files
+          while IFS= read -r -d '' conf; do
+            if bash -n "${conf}" 2>/dev/null; then
+              echo "OK: ${conf}"
+            else
+              echo "::error file=${conf}::bash syntax error in conf.d"
+              failed=1
+            fi
+          done < <(find . -path "*/files/confd/*" -type f -print0)
+          exit ${failed}
+
+  # ---------------------------------------------------------------------------
+  # Job 5: shell script lint (scripts/)
+  # ---------------------------------------------------------------------------
+  shellcheck:
+    name: ShellCheck (scripts/)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on scripts/
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r -d '' script; do
+            echo "Checking: ${script}"
+            shellcheck \
+              --shell=bash \
+              --severity=warning \
+              --exclude=SC1091 \
+              "${script}" || failed=1
+          done < <(find scripts/ -name "*.sh" -type f -print0)
+          exit ${failed}
+
+      - name: Run ShellCheck on init scripts
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r -d '' script; do
+            echo "Checking: ${script}"
+            # OpenRC init scripts use openrc-run builtins — exclude unknown command warnings
+            shellcheck \
+              --shell=bash \
+              --severity=warning \
+              --exclude=SC1091,SC2039,SC2034,SC1008 \
+              "${script}" || failed=1
+          done < <(find . -path "*/files/openrc/*" -type f -print0)
+          exit ${failed}
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Makefile dry-run (no Portage — just script logic check)
+  # ---------------------------------------------------------------------------
+  makefile-check:
+    name: Makefile syntax and help target
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+
+      - name: Verify Makefile parses and help target works
+        run: |
+          make --dry-run help
+          make --dry-run preflight
+          make --dry-run dry-run
+          make --dry-run manifests
+          make --dry-run verify
+          make --dry-run clean
+          echo "All Makefile targets parse successfully"
+
+  # ---------------------------------------------------------------------------
+  # Summary job — required status check for branch protection
+  # ---------------------------------------------------------------------------
+  ci-passed:
+    name: All checks passed
+    runs-on: ubuntu-latest
+    needs:
+      - repoman-scan
+      - manifest-check
+      - python-compat-lint
+      - openrc-syntax
+      - shellcheck
+      - makefile-check
+    if: always()
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "${results}" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          bad = [k for k,v in d.items() if v.get('result') not in ('success','skipped')]
+          print('\n'.join(bad))
+          ")
+          if [[ -n "${failed}" ]]; then
+            echo "The following jobs failed or were cancelled:"
+            echo "${failed}"
+            exit 1
+          fi
+          echo "All CI jobs passed."

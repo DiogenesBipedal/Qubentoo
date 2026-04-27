@@ -1,0 +1,56 @@
+#!/sbin/openrc-run
+# qubes-gui-daemon — renders domU X11 windows into the dom0 X session
+
+description="Qubes GUI daemon"
+pidfile="/run/qubes/qubes-gui-daemon.pid"
+command="/usr/bin/qubes-guid"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+: ${QUBES_GUI_DISPLAY:=:0}
+: ${QUBES_GUI_XAUTHORITY:=/var/run/lightdm/root/:0}
+
+depend() {
+	need qubesd qubes-db qubes-rpc-proxy
+	# Wait for X11 display to be ready
+	need display-manager
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	if [[ -z "${QUBES_GUI_DISPLAY}" ]]; then
+		eerror "QUBES_GUI_DISPLAY is not set in /etc/conf.d/qubes-gui-daemon"
+		return 1
+	fi
+
+	# Verify X11 is reachable before starting
+	local attempts=0
+	until DISPLAY="${QUBES_GUI_DISPLAY}" XAUTHORITY="${QUBES_GUI_XAUTHORITY}" \
+		xdpyinfo >/dev/null 2>&1; do
+		attempts=$(( attempts + 1 ))
+		if [[ ${attempts} -ge 10 ]]; then
+			eerror "X11 display ${QUBES_GUI_DISPLAY} not available after 10s"
+			return 1
+		fi
+		sleep 1
+	done
+
+	checkpath -d -m 0700 -o root:qubes /run/qubes
+}
+
+start() {
+	export DISPLAY="${QUBES_GUI_DISPLAY}"
+	export XAUTHORITY="${QUBES_GUI_XAUTHORITY}"
+	ebegin "Starting Qubes GUI daemon on ${DISPLAY}"
+	start-stop-daemon --start \
+		--background \
+		--make-pidfile --pidfile "${pidfile}" \
+		--exec "${command}" -- ${command_args}
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping Qubes GUI daemon"
+	start-stop-daemon --stop --pidfile "${pidfile}" --retry TERM/5/KILL/2
+	eend $?
+}

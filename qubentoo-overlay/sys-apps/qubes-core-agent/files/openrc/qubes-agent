@@ -1,0 +1,49 @@
+#!/sbin/openrc-run
+# qubes-agent — Qubes OS core guest agent (domU side)
+# Starts qubes-db-daemon, then hands off to qubes-qrexec-agent.
+
+description="Qubes OS core guest agent"
+pidfile="/run/qubes/qubes-agent.pid"
+
+# qubes-db-daemon socket written here
+: ${QUBESDB_SOCKET:=/run/qubes/qubesdb.sock}
+
+depend() {
+	# Must have network stack and xenstore available
+	need net xenstored
+	before qubes-qrexec-agent qubes-gui-agent
+	keyword -lxc -openvz -prefix
+}
+
+start() {
+	ebegin "Starting Qubes guest agent"
+
+	checkpath -d -m 0755 /run/qubes
+
+	# 1. Start qubes-db-daemon (key-value store for dom0 ↔ domU policy/config)
+	if ! pgrep -x qubesdb-daemon >/dev/null 2>&1; then
+		start-stop-daemon --start \
+			--background \
+			--make-pidfile --pidfile /run/qubes/qubesdb-daemon.pid \
+			--exec /usr/sbin/qubesdb-daemon -- \
+				--socket "${QUBESDB_SOCKET}" \
+			|| { eend 1 "qubesdb-daemon failed to start"; return 1; }
+		# Give it a moment to create the socket
+		local i=0
+		until [[ -S "${QUBESDB_SOCKET}" ]] || (( i++ >= 10 )); do sleep 1; done
+		[[ -S "${QUBESDB_SOCKET}" ]] || { eend 1 "qubesdb socket not ready"; return 1; }
+	fi
+
+	# 2. qubes-qrexec-agent is managed by its own init script (depend above
+	#    ensures it starts after us); nothing more to do here.
+
+	eend 0
+}
+
+stop() {
+	ebegin "Stopping Qubes guest agent"
+	start-stop-daemon --stop \
+		--pidfile /run/qubes/qubesdb-daemon.pid \
+		--retry TERM/5/KILL/2
+	eend $?
+}

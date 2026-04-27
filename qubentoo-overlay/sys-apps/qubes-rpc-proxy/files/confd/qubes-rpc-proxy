@@ -1,0 +1,7 @@
+# /etc/conf.d/qubes-rpc-proxy
+
+# Policy directory
+QUBES_POLICY_DIR="/etc/qubes/policy.d"
+
+# Default action when no policy matches: ask | deny | allow
+QUBES_POLICY_DEFAULT="ask"

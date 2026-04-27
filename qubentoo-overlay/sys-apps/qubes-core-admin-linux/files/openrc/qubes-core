@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+# qubes-core — Linux dom0 core initialisation (qmemman, misc setup)
+
+description="Qubes OS Linux dom0 core init"
+
+depend() {
+	need qubesd qubes-db
+	keyword -lxc -openvz -prefix
+}
+
+start() {
+	ebegin "Initialising Qubes Linux dom0 components"
+
+	# Set dom0 memory ballooning parameters via xenstore
+	if command -v xenstore-write >/dev/null 2>&1; then
+		xenstore-write /local/domain/0/memory/target \
+			$(awk '/MemTotal/{print $2}' /proc/meminfo) || true
+	fi
+
+	# Load qubes udev rules
+	udevadm control --reload-rules 2>/dev/null || true
+
+	eend 0
+}
+
+stop() {
+	ebegin "Stopping Qubes Linux dom0 components"
+	eend 0
+}

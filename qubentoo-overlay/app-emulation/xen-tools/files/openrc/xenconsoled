@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# Xen console daemon — multiplexes domU consoles
+
+description="Xen console daemon"
+pidfile="/run/xenconsoled.pid"
+command="/usr/sbin/xenconsoled"
+command_args="--pid-file=${pidfile}"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile"
+
+depend() {
+	need xencommons xenstored
+	keyword -lxc -openvz -prefix -vserver
+}
+
+start_pre() {
+	checkpath -d -m 0700 /var/log/xen/console
+}

@@ -1,0 +1,19 @@
+# /etc/conf.d/qubes-gui-agent — Qubes GUI agent configuration
+#
+# DISPLAY MANAGER DEPENDENCY
+# --------------------------
+# Set this to the OpenRC service name of your display manager.
+# The qubes-gui-agent init script will declare `need "${QUBES_GUI_DM}"`
+# so OpenRC starts it only after the DM is up.
+#
+# Common values:
+#   xdm      — X.Org xdm (default, available in x11-apps/xdm)
+#   lightdm  — LightDM    (x11-misc/lightdm)
+#   sddm     — SDDM       (x11-misc/sddm)
+#   gdm      — GDM        (gnome-base/gdm)
+#
+# See /usr/share/doc/qubes-gui-agent-*/display-manager.md for full details.
+QUBES_GUI_DM="xdm"
+
+# Log verbosity passed to qubes-gui agent: 0=errors 1=info 2=debug
+QUBES_GUI_LOG_LEVEL="1"

@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+# qubesd — Qubes OS admin daemon (dom0 core management)
+
+description="Qubes OS admin daemon"
+pidfile="/run/qubes/qubesd.pid"
+command="/usr/sbin/qubesd"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+# qubesd speaks over a Unix socket; location matches upstream default
+: ${QUBESD_SOCKET:=/run/qubes/qubesd.sock}
+
+depend() {
+	need qubes-db xenstored xencommons
+	before qubes-gui-daemon qubes-rpc-proxy
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	checkpath -d -m 0700 -o root:qubes /run/qubes
+}

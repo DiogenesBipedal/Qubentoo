@@ -1,0 +1,24 @@
+# Portage artifacts
+*.pyc
+__pycache__/
+manifest-gen.log
+repoman-report.txt
+/var/
+/tmp/
+
+# Kernel build artifacts
+*.o
+*.ko
+*.mod
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+
+# OS clutter
+.DS_Store
+Thumbs.db
+
+# Build logs
+*.log
+qubentoo-kernel-build.log

@@ -1,0 +1,28 @@
+# Qubentoo dom0 profile defaults
+# Inherits from gentoo:default/linux/amd64/23.0/hardened
+
+PROFILE_ONLY_VARIABLES="${PROFILE_ONLY_VARIABLES} IUSE_IMPLICIT"
+
+USE="hardened openrc -systemd xen pam python dbus \
+     policykit pie ssp caps \
+     -kde -gnome -pulseaudio \
+     X jpeg png svg \
+     ssl gnutls curl"
+
+# Xen dom0 requires 64-bit
+ABI_X86="64"
+
+# Python target — keep single for Qubes admin tooling
+PYTHON_SINGLE_TARGET="python3_11"
+PYTHON_TARGETS="python3_11"
+
+# Xen requires grub with multiboot2 support
+GRUB_PLATFORMS="xen xen-32 pc"
+
+# Hardened compiler flags
+CFLAGS="-O2 -pipe -march=x86-64 -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+CXXFLAGS="${CFLAGS}"
+LDFLAGS="-Wl,-z,relro,-z,now"
+
+# No kernel modules forced unload
+KERNEL_FEATURES="-module-force-unload"

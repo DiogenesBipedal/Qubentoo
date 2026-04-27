@@ -1,0 +1,7 @@
+# /etc/conf.d/qubes-agent — Qubes core guest agent configuration
+
+# Path to the QubesDB unix socket
+QUBESDB_SOCKET="/run/qubes/qubesdb.sock"
+
+# Set to "yes" to enable verbose logging from qubesdb-daemon
+QUBESDB_DEBUG="no"

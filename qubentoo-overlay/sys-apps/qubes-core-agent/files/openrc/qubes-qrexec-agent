@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+# qubes-qrexec-agent — qrexec agent daemon (domU side)
+# Handles dom0-initiated RPC calls into this VM.
+
+description="Qubes qrexec agent daemon"
+pidfile="/run/qubes/qubes-qrexec-agent.pid"
+command="/usr/sbin/qrexec-agent"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+depend() {
+	# qubes-agent ensures qubesdb-daemon is up first
+	need qubes-agent
+	before qubes-gui-agent
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	checkpath -d -m 0755 /run/qubes
+	# Verify qubesdb socket is present before qrexec-agent tries to connect
+	if [[ ! -S /run/qubes/qubesdb.sock ]]; then
+		eerror "QubesDB socket not found — is qubes-agent running?"
+		return 1
+	fi
+}

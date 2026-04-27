@@ -1,0 +1,65 @@
+#!/sbin/openrc-run
+# Xen saved/auto-start domains management
+
+description="Xen auto-start domains"
+
+: ${XENDOMAINS_SAVE:=/var/lib/xen/save}
+: ${XENDOMAINS_AUTO:=/etc/xen/auto}
+: ${XENDOMAINS_RESTORE:=true}
+: ${XENDOMAINS_AUTO_ONLY:=false}
+: ${XENDOMAINS_SHUTDOWN:="--wait"}
+: ${XENDOMAINS_SHUTDOWN_ALL:=""}
+
+depend() {
+	need xencommons xenconsoled
+	keyword -lxc -openvz -prefix -vserver
+}
+
+start_pre() {
+	checkpath -d -m 0700 "${XENDOMAINS_SAVE}"
+}
+
+start() {
+	ebegin "Restoring/starting Xen domains"
+
+	if yesno "${XENDOMAINS_RESTORE}"; then
+		local img
+		for img in "${XENDOMAINS_SAVE}"/*.save; do
+			[[ -f "${img}" ]] || continue
+			local name="${img%.save}"
+			name="${name##*/}"
+			einfo "  Restoring domain: ${name}"
+			xl restore "${img}" && rm -f "${img}" || \
+				ewarn "  Failed to restore ${name}"
+		done
+	fi
+
+	if ! yesno "${XENDOMAINS_AUTO_ONLY}"; then
+		local cfg
+		for cfg in "${XENDOMAINS_AUTO}"/*.cfg "${XENDOMAINS_AUTO}"/*.conf; do
+			[[ -f "${cfg}" ]] || continue
+			local name="${cfg##*/}"
+			name="${name%.cfg}"; name="${name%.conf}"
+			einfo "  Auto-starting domain: ${name}"
+			xl create "${cfg}" || ewarn "  Failed to start ${name}"
+		done
+	fi
+
+	eend 0
+}
+
+stop() {
+	ebegin "Saving/shutting down Xen domains"
+
+	local domids
+	domids=$(xl list 2>/dev/null | awk 'NR>1 && $1!="Domain-0" {print $1}')
+
+	local dom
+	for dom in ${domids}; do
+		einfo "  Saving domain: ${dom}"
+		xl save "${dom}" "${XENDOMAINS_SAVE}/${dom}.save" 2>/dev/null || \
+			xl shutdown ${XENDOMAINS_SHUTDOWN} "${dom}" || true
+	done
+
+	eend 0
+}

@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+# Xen xenstore daemon — must start before any domU tools
+
+description="Xen xenstore daemon"
+pidfile="/run/xenstored.pid"
+command="/usr/sbin/xenstored"
+command_args="--pid-file=${pidfile} --no-fork"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile"
+
+depend() {
+	need localmount
+	before xencommons xenconsoled xendomains
+	keyword -lxc -openvz -prefix -vserver
+}
+
+start_pre() {
+	if ! grep -q "xenfs" /proc/mounts 2>/dev/null; then
+		mount -t xenfs xenfs /proc/xen || {
+			ewarn "Could not mount xenfs — is this a Xen dom0 kernel?"
+			return 1
+		}
+	fi
+	checkpath -d -m 0755 /run/xen
+}
+
+stop_post() {
+	umount /proc/xen 2>/dev/null || true
+}

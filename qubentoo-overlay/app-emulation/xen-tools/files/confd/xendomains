@@ -1,0 +1,16 @@
+# /etc/conf.d/xendomains — configuration for xendomains OpenRC service
+
+# Directory for saved domain images on shutdown
+XENDOMAINS_SAVE="/var/lib/xen/save"
+
+# Directory of xl configs to auto-start on boot
+XENDOMAINS_AUTO="/etc/xen/auto"
+
+# Restore previously saved domains on start?
+XENDOMAINS_RESTORE="true"
+
+# Only start domains in XENDOMAINS_AUTO (skip restore)?
+XENDOMAINS_AUTO_ONLY="false"
+
+# Extra args to xl shutdown for managed domains
+XENDOMAINS_SHUTDOWN="--wait"

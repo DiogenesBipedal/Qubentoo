@@ -1,0 +1,55 @@
+#!/sbin/openrc-run
+# qubes-gui-agent — forwards domU X11 windows to dom0 via Qubes GUI protocol.
+#
+# The display manager dependency is configurable via /etc/conf.d/qubes-gui-agent
+# (QUBES_GUI_DM). This avoids hardcoding a specific DM name and lets the admin
+# set lightdm, sddm, gdm, or xdm without patching the init script.
+
+description="Qubes OS GUI agent"
+pidfile="/run/qubes/qubes-gui-agent.pid"
+command="/usr/bin/qubes-gui"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+# Read conf.d — default to xdm if not set
+: ${QUBES_GUI_DM:=xdm}
+: ${QUBES_GUI_LOG_LEVEL:=1}
+
+depend() {
+	need qubes-agent qubes-qrexec-agent
+	# Dynamic display manager dependency — resolved at service start time.
+	# OpenRC evaluates depend() once; we use the variable captured at source time.
+	need "${QUBES_GUI_DM}"
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	checkpath -d -m 0755 /run/qubes
+
+	if [[ -z "${QUBES_GUI_DM}" ]]; then
+		eerror "QUBES_GUI_DM is empty in /etc/conf.d/qubes-gui-agent"
+		return 1
+	fi
+
+	# Sanity: verify the DM service is actually running
+	if ! rc-service --quiet "${QUBES_GUI_DM}" status >/dev/null 2>&1; then
+		ewarn "Display manager '${QUBES_GUI_DM}' does not appear to be running."
+		ewarn "Set QUBES_GUI_DM in /etc/conf.d/qubes-gui-agent to your actual DM."
+	fi
+}
+
+start() {
+	export QUBES_GUI_LOG_LEVEL="${QUBES_GUI_LOG_LEVEL}"
+	ebegin "Starting Qubes GUI agent (DM: ${QUBES_GUI_DM})"
+	start-stop-daemon --start \
+		--background \
+		--make-pidfile --pidfile "${pidfile}" \
+		--exec "${command}"
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping Qubes GUI agent"
+	start-stop-daemon --stop --pidfile "${pidfile}" --retry TERM/5/KILL/2
+	eend $?
+}

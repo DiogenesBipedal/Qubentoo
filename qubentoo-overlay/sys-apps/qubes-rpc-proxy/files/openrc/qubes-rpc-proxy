@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+# qubes-rpc-proxy — qrexec policy daemon (evaluates cross-domain RPC calls)
+
+description="Qubes qrexec policy daemon"
+pidfile="/run/qubes/qubes-rpc-proxy.pid"
+command="/usr/sbin/qubes-rpc-proxy"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+depend() {
+	need qubesd qubes-db
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	checkpath -d -m 0700 -o root:qubes /run/qubes
+	if [[ ! -d /etc/qubes/policy.d ]]; then
+		eerror "/etc/qubes/policy.d does not exist — no RPC policies installed"
+		return 1
+	fi
+}

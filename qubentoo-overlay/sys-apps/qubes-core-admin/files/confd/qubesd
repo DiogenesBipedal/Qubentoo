@@ -1,0 +1,7 @@
+# /etc/conf.d/qubesd
+
+# Unix socket path for qubesd API
+QUBESD_SOCKET="/run/qubes/qubesd.sock"
+
+# Log verbosity: DEBUG, INFO, WARNING, ERROR
+QUBESD_LOG_LEVEL="INFO"

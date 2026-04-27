@@ -1,0 +1,7 @@
+# /etc/conf.d/xencommons — configuration for xencommons OpenRC service
+
+# Extra kernel modules to load beyond the defaults
+XENCOMMONS_EXTRA_MODULES=""
+
+# Set to "yes" to enable IOMMU (VT-d/AMD-Vi) at xencommons start
+XENCOMMONS_IOMMU="yes"
