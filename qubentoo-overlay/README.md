@@ -1,43 +1,102 @@
 # Qubentoo GNU/Linux
 
-**A full rebase of Qubes OS onto a Gentoo Linux base with OpenRC — no systemd.**
+**Qubes OS security architecture rebuilt on Gentoo Linux — OpenRC only, no systemd.**
 
-> **Status: Alpha / Pre-boot**
-> The overlay scaffold, all ebuilds, and bootstrap scripts are complete.
-> Xen boot on real hardware has not yet been validated.
-> Contributions and testing reports welcome.
-
-![overlay-check](https://github.com/qubentoo/qubentoo-overlay/actions/workflows/overlay-check.yml/badge.svg)
+[![CI](https://github.com/DiogenesBipedal/Qubentoo/actions/workflows/overlay-check.yml/badge.svg)](https://github.com/DiogenesBipedal/Qubentoo/actions/workflows/overlay-check.yml)
+![Status: Alpha](https://img.shields.io/badge/status-alpha%2Fpre--boot-orange)
+![Xen 4.17.5](https://img.shields.io/badge/xen-4.17.5-blue)
+![EAPI 8](https://img.shields.io/badge/EAPI-8-green)
 
 ---
 
 ## What is Qubentoo?
 
-Qubentoo takes the security architecture of [Qubes OS](https://www.qubes-os.org/)
-(Xen hypervisor, compartmentalised VMs, qrexec RPC) and rebuilds it on top
-of [Gentoo Linux](https://www.gentoo.org/) with:
+Qubentoo is a Gentoo Linux overlay that reimplements the full [Qubes OS](https://www.qubes-os.org/)
+security stack — Xen hypervisor, VM compartmentalisation, qrexec RPC, GUI multiplexing —
+without systemd. Every service runs under OpenRC. The entire system compiles from source
+against a hardened Gentoo profile.
 
-- **OpenRC** instead of systemd — every service has a hand-written init script
-- **Hardened Gentoo profile** — PIE, SSP, FORTIFY, RELRO by default
-- **EAPI=8 ebuilds** — a proper Gentoo overlay, not a fork
-- **Gentoo template VMs** — AppVMs built from hardened Gentoo stage3
-- **No binary blobs** — everything compiled from source
+**The goal:** a source-based, auditable, OpenRC-native OS where each application
+lives in its own hardware-isolated VM, with the security guarantees of Qubes and
+the flexibility of Gentoo.
 
-### Architecture
+---
+
+## Architecture
 
 ```
-GRUB (multiboot2)
+GRUB / Xen EFI stub
   └── Xen 4.17.x hypervisor
-        ├── dom0: Gentoo hardened + OpenRC
-        │     ├── qubesd (core admin daemon)
-        │     ├── qubes-gui-daemon (X11 window multiplexer)
-        │     ├── qubes-rpc-proxy (qrexec policy engine)
+        ├── dom0  — Gentoo hardened + OpenRC
+        │     ├── qubesd         (admin daemon — manages all VMs)
+        │     ├── qubes-gui-daemon  (X11 window multiplexer)
+        │     ├── qubes-rpc-proxy   (qrexec policy engine)
+        │     ├── qubes-firewall    (nftables NetVM / AppVM rules)
         │     └── xl / xenstore tools
-        └── domU: Gentoo PV template VMs
-              ├── qubes-core-agent
-              ├── qubes-gui-agent
-              └── qubes-qrexec-agent
+        │
+        └── domU  — Gentoo PV template VMs
+              ├── qubes-core-agent    (guest-side VM agent)
+              ├── qubes-gui-agent     (display protocol client)
+              └── qubes-qrexec-agent  (inter-VM RPC)
 ```
+
+---
+
+## What works right now
+
+| Component | State |
+|-----------|-------|
+| Overlay scaffold (metadata, eclass, profiles) | Complete |
+| Xen 4.17.5 hypervisor ebuild | Complete |
+| Xen tools ebuild (xl, xenstore, xendomains) | Complete |
+| QubesDB daemon (`qubes-core-qubesdb`) | Complete |
+| vchan transport + library | Complete |
+| dom0 admin stack (qubesd, admin-linux, rpc-proxy) | Complete |
+| GUI stack — dom0 daemon + domU agent | Complete |
+| Qubes Manager GUI (`gui-apps/qubes-manager`) | Ebuild complete, untested |
+| Input proxy (`sys-apps/qubes-input-proxy`) | Ebuild complete, untested |
+| Firewall (`net-proxy/qubes-firewall`) | Ebuild complete, untested |
+| Xen stubdom (`qubes-vmm-xen-stubdom-linux`) | Ebuild complete, RESTRICT=network-sandbox |
+| Python bindings (qubesdb, xen) | Complete |
+| Kernel config fragment (Linux 6.6 LTS + Xen dom0 hardening) | Complete |
+| Bootstrap script (`bootstrap-dom0.sh`) | Complete — idempotent, HOSTNAME/TIMEZONE aware |
+| Disk installer (`install-qubentoo.sh`) | Complete, untested on hardware |
+| Gentoo domU template build script | Complete |
+| Catalyst live ISO recipe | Skeleton — placeholder paths need updating |
+| CI: emerge --pretend (dom0 + domU), kernel config check, pkgcheck | Passing |
+| MacBook Air 2013 platform support | Kernel config + EFI setup complete |
+| Xen boot on real hardware | **Not yet validated** |
+| `qvm-*` management command suite | Not started |
+| USB / audio qube configuration | Not started |
+
+---
+
+## Hardware support
+
+### Generic x86-64
+
+Any machine with:
+- Intel VT-x or AMD-V
+- IOMMU (VT-d / AMD-Vi) enabled in firmware
+- UEFI firmware (legacy BIOS supported via GRUB multiboot2 fallback)
+
+### MacBook Air (Mid 2013)
+
+Full platform-specific support in `hardware/macbook-air-2013/`:
+
+| Hardware | Status |
+|----------|--------|
+| Intel HD Graphics 5000 (i915) | Working |
+| Apple PCIe SSD (AHCI) | Working — appears as `/dev/sda` |
+| Apple Multi-Touch trackpad (BCM5974) | Working |
+| BCM4360 WiFi | Partial — `brcmfmac` (open) or `broadcom-sta` (full) |
+| Apple keyboard (HID) | Working |
+| applesmc (fan, temp, backlight) | Working |
+| Thunderbolt 2 | Working |
+| CS4208 audio (Cirrus) | Working |
+
+Apple EFI workaround: `apple-efi-setup.sh` installs `xen.efi` as
+`/EFI/BOOT/BOOTx64.EFI`, bypassing Apple's refusal to honour named EFI entries.
 
 ---
 
@@ -45,29 +104,37 @@ GRUB (multiboot2)
 
 ### Prerequisites
 
-- A machine with Intel VT-x or AMD-V (hardware virtualisation)
-- IOMMU enabled in BIOS (VT-d / AMD-Vi)
-- A booted Gentoo stage3 (hardened/amd64/openrc profile)
+- A machine with Intel VT-x or AMD-V and IOMMU enabled in firmware
+- A booted Gentoo stage3 (`hardened/amd64/openrc` profile)
+- Portage configured (`/etc/portage/make.conf`)
 
 ### 1. Clone and validate
 
 ```bash
-git clone https://github.com/qubentoo/qubentoo-overlay.git
-cd qubentoo-overlay
+git clone https://github.com/DiogenesBipedal/Qubentoo.git
+cd Qubentoo
 
 make preflight    # check CPU, IOMMU, kernel, disk space
-make dry-run      # emerge --pretend of full package set
+make dry-run      # emerge --pretend full dom0 package set
 ```
 
 ### 2. Bootstrap dom0
 
 ```bash
 sudo make bootstrap
-# Prompts: "Type YES to continue"
-# Asks: "Which display manager? [xdm/lightdm/sddm]"
+# Prompts for confirmation, then installs all Qubes dom0 packages
+# and configures OpenRC services
 ```
 
-### 3. Build a Gentoo template VM
+### 3. Build the dom0 kernel
+
+```bash
+sudo make kernel
+# Merges kernel/qubentoo-dom0.config into your kernel source tree,
+# builds, installs, and regenerates GRUB config
+```
+
+### 4. Build a Gentoo template VM
 
 ```bash
 sudo make gentoo-template
@@ -75,73 +142,35 @@ sudo make gentoo-template
 qvm-template install --local /var/lib/qubes/vm-templates/gentoo-qubentoo-1.tar
 ```
 
+### MacBook Air 2013 — bare-metal install from live CD
+
+```bash
+sudo bash scripts/install-qubentoo.sh \
+  --disk /dev/sda \
+  --hostname qubentoo \
+  --timezone America/New_York
+# After bootstrap completes:
+sudo bash hardware/macbook-air-2013/apple-efi-setup.sh
+```
+
 ---
 
-## Repository layout
+## Installer (full disk, live CD)
 
-```
-qubentoo-overlay/
-├── Makefile                    ← make preflight / dry-run / bootstrap / ...
-├── eclass/
-│   └── qubes.eclass            ← shared build helpers for all Qubes packages
-├── metadata/layout.conf
-├── profiles/base/
-│   ├── eapi                    ← EAPI=8
-│   └── make.defaults           ← USE="hardened openrc -systemd xen ..."
-│
-├── app-emulation/
-│   ├── xen/                    ← Xen 4.17.5 hypervisor (dom0, no stubdom)
-│   └── xen-tools/              ← xl, xenstore, xenstored, xendomains
-│
-├── sys-apps/
-│   ├── qubes-core-qubesdb/     ← QubesDB C daemon (dom0 + domU)
-│   ├── qubes-core-vchan-xen/   ← vchan transport
-│   ├── qubes-libvchan/         ← vchan library
-│   ├── qubes-core-admin/       ← qubesd (dom0 admin daemon)
-│   ├── qubes-core-admin-linux/ ← Linux dom0 specifics
-│   ├── qubes-rpc-proxy/        ← qrexec policy engine
-│   ├── qubes-core-agent/       ← domU guest agent
-│   └── qubes-input-proxy/      ← input device isolation (dom0 sender / AppVM receiver)
-│
-├── gui-daemon/
-│   ├── qubes-gui-common/       ← shared GUI protocol headers
-│   ├── qubes-gui-daemon/       ← dom0 X11 GUI daemon
-│   └── qubes-gui-agent/        ← domU GUI agent
-│
-├── gui-apps/
-│   └── qubes-manager/          ← PyQt5 dom0 VM management GUI
-│
-├── net-proxy/
-│   └── qubes-firewall/         ← nftables firewall for NetVMs / AppVMs
-│
-├── app-emulation/
-│   └── qubes-vmm-xen-stubdom-linux/  ← Xen stubdomain kernel (optional, PCI passthrough)
-│
-├── dev-python/
-│   ├── qubesdb/                ← Python bindings for QubesDB
-│   └── xen/                    ← Python bindings for Xen (xen.lowlevel, xen.xl)
-│
-├── kernel/
-│   └── qubentoo-dom0.config    ← kernel defconfig fragment (Xen + hardened)
-│
-├── scripts/
-│   ├── preflight-check.sh      ← hardware/kernel readiness check
-│   ├── test-bootstrap.sh       ← emerge --pretend dry run
-│   ├── bootstrap-dom0.sh       ← full dom0 install
-│   ├── build-gentoo-template.sh← Gentoo domU template tarball
-│   ├── install-qubentoo.sh     ← full disk installer (live CD)
-│   ├── gen-manifests.sh        ← generate Portage Manifest files
-│   └── verify-overlay.sh       ← repoman QA scan
-│
-├── catalyst/
-│   └── qubentoo-livecd.spec    ← Catalyst ISO recipe (paths need updating)
-│
-└── docs/
-    ├── dependency-graph.md     ← full package dependency tree + Mermaid
-    ├── display-manager.md      ← DM configuration guide
-    └── testing/
-        ├── nested-vm-test-plan.md ← KVM pre-hardware test procedure
-        └── consistency-check.md   ← manual QA checklist
+```bash
+# Minimum — auto-detects partition layout
+sudo bash scripts/install-qubentoo.sh --disk /dev/sda
+
+# With all options
+sudo bash scripts/install-qubentoo.sh \
+  --disk /dev/sda \
+  --hostname mymachine \
+  --timezone Europe/Berlin \
+  --dm lightdm \
+  --luks          # enable LUKS full-disk encryption
+
+# Or via make
+sudo make install TARGET_DISK=/dev/sda HOSTNAME=mymachine TIMEZONE=UTC LUKS=1
 ```
 
 ---
@@ -150,82 +179,122 @@ qubentoo-overlay/
 
 | Target | Description |
 |--------|-------------|
-| `make preflight` | Check CPU, IOMMU, kernel, and disk readiness |
-| `make dry-run` | Validate dependency graph with `emerge --pretend` |
+| `make preflight` | Check CPU, IOMMU, kernel readiness |
+| `make dry-run` | `emerge --pretend` of full dom0 package set |
 | `make manifests` | Generate `Manifest` files for all ebuilds |
-| `make verify` | Run `repoman scan` QA check |
-| `make verify-strict` | Same but fail on warnings too |
-| `make bootstrap` | Full dom0 install (requires root + YES confirmation) |
-| `make install` | Disk installer from live CD (set `TARGET_DISK=`, `HOSTNAME=`, `TIMEZONE=`, `LUKS=1`) |
-| `make kernel` | Build and install the dom0 kernel from `kernel/qubentoo-dom0.config` |
+| `make verify` | `repoman scan` / `pkgcheck` QA |
+| `make verify-strict` | Same, fail on warnings |
+| `make bootstrap` | Full dom0 install (root, confirms before running) |
+| `make install` | Disk installer from live CD |
+| `make kernel` | Build and install dom0 kernel from config fragment |
 | `make gentoo-template` | Build Gentoo domU template tarball |
-| `make all` | preflight → dry-run → manifests → verify |
+| `make all` | preflight + dry-run + manifests + verify |
 | `make clean` | Remove generated log files |
 
 ---
 
-## Current status
+## Repository layout
 
-| Component | Status |
-|-----------|--------|
-| Overlay scaffold (metadata, eclass, profiles) | Complete |
-| Xen 4.17.5 ebuilds (hypervisor + tools) | Complete |
-| Qubes dom0 ebuilds (qubesdb, vchan, admin, gui-daemon) | Complete |
-| Qubes domU agent ebuilds | Complete |
-| GUI stack ebuilds (dom0 + domU) | Complete |
-| Qubes Manager GUI (`gui-apps/qubes-manager`) | Ebuild complete, untested |
-| Input proxy (`sys-apps/qubes-input-proxy`) | Ebuild complete, untested |
-| Firewall (`net-proxy/qubes-firewall`) | Ebuild complete, untested |
-| Xen stubdom (`app-emulation/qubes-vmm-xen-stubdom-linux`) | Ebuild complete, RESTRICT=network-sandbox |
-| Python binding stubs (qubesdb, xen) | Complete |
-| Kernel config fragment (Linux 6.6 LTS) | Complete |
-| Bootstrap script | Complete |
-| Disk installer (`scripts/install-qubentoo.sh`) | Complete, untested on hardware |
-| Catalyst ISO recipe | Skeleton only — paths need updating |
-| Gentoo template build script | Complete |
-| Manifest generation | Needs live Portage host |
-| Xen boot on real hardware | Not yet validated |
-| `qvm-*` command suite | Not started |
-| USB / audio qube configuration | Not started |
+```
+qubentoo-overlay/
+├── Makefile
+├── LICENSE                          ← GPL-2.0-only
+├── eclass/qubes.eclass              ← shared ebuild helpers
+├── metadata/layout.conf
+├── profiles/base/
+│
+├── app-emulation/
+│   ├── xen/                         ← Xen 4.17.5 hypervisor
+│   ├── xen-tools/                   ← xl, xenstore, xendomains, xenconsoled
+│   └── qubes-vmm-xen-stubdom-linux/ ← Xen stubdomain (optional, PCI passthrough)
+│
+├── sys-apps/
+│   ├── qubes-core-qubesdb/          ← QubesDB C daemon
+│   ├── qubes-core-vchan-xen/        ← vchan Xen transport
+│   ├── qubes-libvchan/              ← vchan library
+│   ├── qubes-core-admin/            ← qubesd
+│   ├── qubes-core-admin-linux/      ← Linux dom0 specifics
+│   ├── qubes-rpc-proxy/             ← qrexec policy engine
+│   ├── qubes-core-agent/            ← domU guest agent
+│   └── qubes-input-proxy/           ← input device isolation
+│
+├── gui-daemon/
+│   ├── qubes-gui-common/
+│   ├── qubes-gui-daemon/            ← dom0 X11 multiplexer
+│   └── qubes-gui-agent/             ← domU display client
+│
+├── gui-apps/qubes-manager/          ← PyQt5 VM management GUI
+├── net-proxy/qubes-firewall/        ← nftables firewall
+├── dev-python/{qubesdb,xen}/        ← Python bindings
+│
+├── kernel/qubentoo-dom0.config      ← defconfig fragment (Linux 6.6 LTS)
+│
+├── hardware/
+│   └── macbook-air-2013/
+│       ├── README.md                ← hardware guide
+│       ├── kernel.config            ← supplemental Apple hardware config
+│       └── apple-efi-setup.sh       ← EFI fallback installer
+│
+├── scripts/
+│   ├── preflight-check.sh
+│   ├── bootstrap-dom0.sh
+│   ├── build-gentoo-template.sh
+│   ├── install-qubentoo.sh
+│   ├── test-bootstrap.sh
+│   ├── gen-manifests.sh
+│   └── verify-overlay.sh
+│
+├── catalyst/qubentoo-livecd.spec    ← Catalyst ISO recipe skeleton
+│
+└── docs/
+    ├── dependency-graph.md
+    ├── display-manager.md
+    ├── testing/
+    │   ├── nested-vm-test-plan.md
+    │   └── consistency-check.md
+    └── troubleshooting/
+        └── grub-xen-missing.md
+```
 
 ---
 
-## Installer
+## CI
 
-To install Qubentoo onto a physical disk from a Gentoo live CD:
+GitHub Actions runs on every push and PR:
 
-```bash
-# Minimum: specify the target disk
-sudo bash scripts/install-qubentoo.sh --disk /dev/sda
+- **emerge-pretend** — `emerge --pretend` all dom0 packages in a hardened-openrc stage3 container
+- **template-pretend** — `emerge --pretend` all domU packages
+- **kernel-config-check** — verify `CONFIG_XEN=y`, `CONFIG_XEN_DOM0=y`, `CONFIG_XEN_PVCALLS_FRONTEND` unset, IOMMU flags set
+- **openrc-syntax** — `bash -n` on all init scripts and conf.d files
+- **python-compat-lint** — verify `PYTHON_COMPAT` in all Python ebuilds
+- **overlay-lint** — `pkgcheck scan` (errors fail the build)
+- **ci-passed** — summary gate job that all PRs must pass
 
-# With full options:
-sudo bash scripts/install-qubentoo.sh \
-  --disk /dev/sda \
-  --hostname mymachine \
-  --timezone Europe/Berlin \
-  --dm lightdm \
-  --luks
-```
+---
 
-Or via make:
+## Roadmap
 
-```bash
-sudo make install TARGET_DISK=/dev/sda HOSTNAME=mymachine TIMEZONE=UTC LUKS=1
-```
-
-A Catalyst ISO recipe is in `catalyst/qubentoo-livecd.spec` — update
-the placeholder paths before running `catalyst -f`.
+1. Validate Xen + dom0 boot on physical hardware
+2. Smoke-test all OpenRC services (xenstored, xendomains, qubesd, gui-daemon)
+3. Launch a domU AppVM and exercise qrexec copy-paste
+4. Complete the `qvm-*` management command suite
+5. Build and test live ISO via Catalyst
+6. USB qube and audio qube configuration
+7. LUKS + TPM measured-boot integration
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to write a new ebuild,
-the OpenRC service template, and the testing checklist before opening a PR.
+Contributions welcome — especially boot reports on hardware, ebuild fixes, and
+OpenRC service testing. Open an issue describing your hardware and which step
+failed, or submit a PR with the fix.
+
+Before submitting: run `make verify` and check `docs/testing/consistency-check.md`.
 
 ## License
 
-All overlay ebuilds and scripts are GPL-2.  
-Upstream Qubes OS components retain their own licenses (GPL-2, LGPL-2.1).  
-Gentoo infrastructure (eclass inheritance patterns) follows the Gentoo
-Foundation's licensing terms.
+Overlay ebuilds and scripts: [GPL-2.0-only](LICENSE)
+
+Upstream Qubes OS components retain their own licenses (GPL-2, LGPL-2.1).
+Gentoo infrastructure follows the Gentoo Foundation's licensing terms.
