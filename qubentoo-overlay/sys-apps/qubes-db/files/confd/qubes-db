@@ -1,4 +1,0 @@
-# /etc/conf.d/qubes-db
-
-# Socket path for QubesDB
-QUBESDB_SOCKET="/run/qubes/qubesdb.sock"

@@ -1,0 +1,8 @@
+# /etc/conf.d/qubes-input-proxy
+
+# Role for this VM: "sender" (dom0 / input-VM) or "receiver" (AppVM)
+QUBES_INPUT_ROLE="receiver"
+
+# For sender role: path to the input device to forward (leave empty for default)
+# Example: QUBES_INPUT_DEVICE="/dev/input/event0"
+QUBES_INPUT_DEVICE=""

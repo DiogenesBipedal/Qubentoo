@@ -4,7 +4,7 @@
 EAPI=8
 
 # The Python bindings live in the python/ subdirectory of qubes-core-qubesdb.
-# We pull the same tarball that sys-apps/qubes-db uses and build only that subdir.
+# We pull the same tarball that sys-apps/qubes-core-qubesdb uses and build only that subdir.
 
 PYTHON_COMPAT=( python3_{10,11,12} )
 inherit python-single-r1
@@ -12,8 +12,8 @@ inherit python-single-r1
 DESCRIPTION="Python bindings for QubesDB key-value store"
 HOMEPAGE="https://github.com/QubesOS/qubes-core-qubesdb"
 
-# qubes-core-qubesdb is the upstream repo; qubes-db is the C daemon from the same source.
-# We reuse the same tarball here to avoid a redundant download.
+# qubes-core-qubesdb is the upstream repo for both the C daemon (sys-apps/qubes-core-qubesdb)
+# and these Python bindings.  We reuse the same tarball to avoid a redundant download.
 MY_PN="qubes-core-qubesdb"
 MY_P="${MY_PN}-${PV}"
 SRC_URI="https://github.com/QubesOS/${MY_PN}/archive/v${PV}.tar.gz -> ${MY_P}.tar.gz"
@@ -28,7 +28,7 @@ REQUIRED_USE="${PYTHON_REQUIRED_USE}"
 
 RDEPEND="
 	${PYTHON_DEPS}
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 "
 DEPEND="${RDEPEND}"
 BDEPEND="
@@ -38,8 +38,8 @@ BDEPEND="
 	')
 "
 
-# The qubes-db C library headers and libqubesdb.so are required at build time
-# They are installed by sys-apps/qubes-db
+# The qubes-db C library headers and libqubesdb.so are required at build time.
+# They are installed by sys-apps/qubes-core-qubesdb.
 
 S="${WORKDIR}/${MY_P}/python"
 

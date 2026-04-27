@@ -22,7 +22,7 @@ REQUIRED_USE="${PYTHON_REQUIRED_USE}"
 RDEPEND="
 	${PYTHON_DEPS}
 	sys-apps/qubes-core-admin
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 	app-emulation/xen-tools
 	virtual/udev
 	$(python_gen_cond_dep 'dev-python/setuptools[${PYTHON_USEDEP}]')

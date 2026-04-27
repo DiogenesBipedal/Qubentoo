@@ -22,7 +22,7 @@ REQUIRED_USE="${PYTHON_REQUIRED_USE}"
 
 RDEPEND="
 	${PYTHON_DEPS}
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 	sys-apps/qubes-core-vchan-xen
 	sys-apps/qubes-libvchan
 	app-emulation/xen-tools

@@ -1,0 +1,5 @@
+# Qubes OS input proxy — grant qubes group access to input event devices
+# Installed by sys-apps/qubes-input-proxy
+
+SUBSYSTEM=="input", KERNEL=="event*", GROUP="qubes", MODE="0660"
+SUBSYSTEM=="input", KERNEL=="mice",   GROUP="qubes", MODE="0660"

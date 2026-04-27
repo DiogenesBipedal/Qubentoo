@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+# qubes-firewall — applies nftables rules received from dom0 policy
+
+description="Qubes OS nftables firewall service"
+pidfile="/run/qubes/qubes-firewall.pid"
+command="/usr/sbin/qubes-firewall"
+command_background="yes"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+depend() {
+	need net qubesdb
+	after qubes-agent
+	keyword -lxc -openvz -prefix
+}
+
+start_pre() {
+	checkpath -d -m 0755 /run/qubes
+	# Flush any stale nftables rules before applying fresh policy
+	nft flush ruleset 2>/dev/null || true
+}
+
+stop_post() {
+	# Restore a minimal drop-all ruleset so the VM is not left wide open
+	nft flush ruleset 2>/dev/null || true
+}

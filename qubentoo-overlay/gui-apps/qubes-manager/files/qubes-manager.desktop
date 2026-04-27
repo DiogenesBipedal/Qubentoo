@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Qubes Manager
+GenericName=Virtual Machine Manager
+Comment=Manage Qubes OS virtual machines
+Exec=qubes-manager
+Icon=qubes-manager
+Terminal=false
+Type=Application
+Categories=System;Settings;
+Keywords=qubes;vm;xen;virtual;machine;manager;
+StartupNotify=true

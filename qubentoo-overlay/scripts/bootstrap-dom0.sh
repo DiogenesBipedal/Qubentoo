@@ -22,6 +22,23 @@ require_root() {
 
 require_root
 
+# --- idempotency guard -------------------------------------------------
+
+SENTINEL="/etc/qubentoo/.bootstrapped"
+if [[ -f "${SENTINEL}" ]]; then
+	echo "==> Qubentoo already bootstrapped (${SENTINEL} exists)."
+	echo "    To re-run, delete ${SENTINEL} and run again."
+	exit 0
+fi
+
+# --- hardware detection helpers ----------------------------------------
+
+is_apple_hardware() {
+	local vendor
+	vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)
+	[[ "${vendor}" == "Apple Inc." ]]
+}
+
 # --- configurable variables (override via env) -------------------------
 
 OVERLAY_DIR="${OVERLAY_DIR:-/var/db/repos/qubentoo}"
@@ -127,7 +144,8 @@ if [[ ! -f "${KEYWORDS_FILE}" ]]; then
 # Qubentoo packages — testing accepted
 app-emulation/xen ~amd64
 app-emulation/xen-tools ~amd64
-sys-apps/qubes-db ~amd64
+sys-apps/qubes-core-qubesdb ~amd64
+dev-python/qubesdb ~amd64
 sys-apps/qubes-core-vchan-xen ~amd64
 sys-apps/qubes-libvchan ~amd64
 sys-apps/qubes-core-admin ~amd64
@@ -135,6 +153,9 @@ sys-apps/qubes-core-admin-linux ~amd64
 sys-apps/qubes-rpc-proxy ~amd64
 gui-daemon/qubes-gui-common ~amd64
 gui-daemon/qubes-gui-daemon ~amd64
+net-proxy/qubes-firewall ~amd64
+sys-apps/qubes-input-proxy ~amd64
+gui-apps/qubes-manager ~amd64
 EOF
 	ok "package.accept_keywords written"
 else
@@ -162,7 +183,8 @@ ok "Xen ${XEN_VERSION} installed"
 # --- step 8: install Qubes core components in dependency order ---------
 
 QUBES_PKGS=(
-	"sys-apps/qubes-db"
+	"sys-apps/qubes-core-qubesdb"
+	"dev-python/qubesdb"
 	"sys-apps/qubes-core-vchan-xen"
 	"sys-apps/qubes-libvchan"
 	"sys-apps/qubes-core-admin"
@@ -170,6 +192,9 @@ QUBES_PKGS=(
 	"sys-apps/qubes-rpc-proxy"
 	"gui-daemon/qubes-gui-common"
 	"gui-daemon/qubes-gui-daemon"
+	"net-proxy/qubes-firewall"
+	"sys-apps/qubes-input-proxy"
+	"gui-apps/qubes-manager"
 )
 
 for pkg in "${QUBES_PKGS[@]}"; do
@@ -193,7 +218,7 @@ for svc in xenstored xencommons; do
 done
 
 # default: everything else after login
-for svc in xenconsoled xendomains qubes-db qubesd qubes-core qubes-rpc-proxy qubes-gui-daemon; do
+for svc in xenconsoled xendomains qubesdb qubesd qubes-core qubes-rpc-proxy qubes-gui-daemon qubes-firewall; do
 	if ! rc-update show default 2>/dev/null | grep -qw "${svc}"; then
 		rc-update add "${svc}" default
 		ok "  Added ${svc} to default"
@@ -239,6 +264,24 @@ else
 	warn "After install, set QUBES_GUI_DM in ${CONFD_GUI} manually."
 fi
 
+# --- step 9c: set hostname and timezone --------------------------------
+
+info "Setting hostname and timezone..."
+
+HOSTNAME="${HOSTNAME:-qubentoo}"
+echo "${HOSTNAME}" > /etc/hostname
+if grep -q "^127\.0\.0\.1" /etc/hosts 2>/dev/null; then
+	sed -i "s/^127\.0\.0\.1.*/127.0.0.1\t${HOSTNAME} localhost/" /etc/hosts
+else
+	printf "127.0.0.1\t%s localhost\n" "${HOSTNAME}" >> /etc/hosts
+fi
+ok "Hostname set to ${HOSTNAME}"
+
+TIMEZONE="${TIMEZONE:-UTC}"
+ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime
+echo "${TIMEZONE}" > /etc/timezone
+ok "Timezone set to ${TIMEZONE}"
+
 # --- step 10: configure GRUB to boot Xen then kernel ------------------
 
 info "Configuring GRUB for Xen multiboot..."
@@ -254,6 +297,16 @@ fi
 
 GRUB_CFG="/etc/default/grub"
 if ! grep -q "# qubentoo-xen" "${GRUB_CFG}" 2>/dev/null; then
+	# On Intel hardware always add intel_iommu=on to the Linux dom0 cmdline.
+	# Xen manages the IOMMU, but this ensures dom0 also sees IOMMU mappings
+	# correctly for PCI passthrough to NetVMs (e.g. WiFi card on Apple hardware).
+	LINUX_IOMMU_OPT="intel_iommu=on"
+	if is_apple_hardware; then
+		# applesmc.power=1 keeps the SMC power LED logic active
+		LINUX_IOMMU_OPT="intel_iommu=on applesmc.power=1"
+		info "Apple hardware detected — adding Apple-specific kernel parameters"
+	fi
+
 	cat >> "${GRUB_CFG}" << EOF
 
 # qubentoo-xen — appended by bootstrap-dom0.sh
@@ -261,8 +314,8 @@ GRUB_DEFAULT=0
 GRUB_TIMEOUT=5
 # Xen command line
 GRUB_CMDLINE_XEN_DEFAULT="dom0_mem=${DOM0_MEM_MB}M,max:${DOM0_MEM_MB}M dom0_max_vcpus=4 iommu=on dom0_vcpus_pin"
-# Linux dom0 command line
-GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+# Linux dom0 command line (intel_iommu=on activates VT-d in dom0 for NetVM passthrough)
+GRUB_CMDLINE_LINUX_DEFAULT="quiet ${LINUX_IOMMU_OPT}"
 # Tell grub-mkconfig to emit a Xen multiboot entry
 GRUB_MULTIBOOT_MODULE_LOAD="yes"
 EOF
@@ -279,15 +332,28 @@ if ! command -v grub-install >/dev/null 2>&1; then
 fi
 
 info "Installing GRUB to ${GRUB_DISK}..."
-grub-install \
-	--target=x86_64-efi \
-	--efi-directory=/boot/efi \
-	--bootloader-id=Qubentoo \
-	"${GRUB_DISK}" \
-	|| grub-install \
-		--target=i386-pc \
+if is_apple_hardware; then
+	# Apple EFI ignores named boot entries; --removable installs to
+	# /EFI/BOOT/BOOTx64.EFI which Apple firmware loads as the fallback.
+	info "Apple hardware — using --removable flag for GRUB EFI install"
+	grub-install \
+		--target=x86_64-efi \
+		--efi-directory=/boot/efi \
+		--bootloader-id=Qubentoo \
+		--removable \
 		"${GRUB_DISK}" \
 		|| warn "grub-install failed — check GRUB_DISK=${GRUB_DISK} and EFI mount"
+else
+	grub-install \
+		--target=x86_64-efi \
+		--efi-directory=/boot/efi \
+		--bootloader-id=Qubentoo \
+		"${GRUB_DISK}" \
+		|| grub-install \
+			--target=i386-pc \
+			"${GRUB_DISK}" \
+			|| warn "grub-install failed — check GRUB_DISK=${GRUB_DISK} and EFI mount"
+fi
 
 info "Generating GRUB config..."
 grub-mkconfig -o /boot/grub/grub.cfg \
@@ -321,6 +387,49 @@ else
 	warn "Kernel config fragment not found at ${OVERLAY_SRC}/kernel/qubentoo-dom0.config"
 fi
 
+# --- step 11b: Apple hardware — additional kernel config + WiFi --------
+
+if is_apple_hardware; then
+	info "Apple hardware detected — applying MacBook Air 2013 kernel config supplement..."
+	APPLE_CFG="${OVERLAY_SRC}/hardware/macbook-air-2013/kernel.config"
+	if [[ -f "${APPLE_CFG}" ]] && [[ -d "${KERNEL_SRC}" ]]; then
+		cd "${KERNEL_SRC}"
+		"${KERNEL_SRC}/scripts/kconfig/merge_config.sh" \
+			.config "${APPLE_CFG}" \
+			|| warn "Apple kernel config merge failed — apply manually"
+		ok "Apple kernel config supplement merged"
+		cd - >/dev/null
+	else
+		warn "Apple kernel config not found at ${APPLE_CFG} — apply manually"
+	fi
+
+	info "Emerging Broadcom WiFi driver for BCM4360 (needed for initial network access)..."
+	emerge --quiet --noreplace net-wireless/broadcom-sta \
+		|| warn "broadcom-sta emerge failed — WiFi will need manual setup"
+	mkdir -p /etc/modprobe.d
+	cat > /etc/modprobe.d/broadcom-wl.conf << 'EOF'
+# Blacklist open-source brcmfmac so broadcom-sta (wl) owns BCM4360 in dom0
+blacklist brcmfmac
+blacklist brcmutil
+EOF
+	ok "Broadcom WiFi (wl) configured — after dom0 is stable, assign WiFi card to a NetVM"
+fi
+
+# --- step 11c: Apple EFI — install xen.efi as fallback boot binary -----
+
+if is_apple_hardware && [[ -d /sys/firmware/efi ]]; then
+	info "Setting up Xen EFI boot for Apple firmware..."
+	if [[ -f "${OVERLAY_SRC}/hardware/macbook-air-2013/apple-efi-setup.sh" ]]; then
+		OVERLAY_SRC="${OVERLAY_SRC}" \
+		DOM0_MEM_MB="${DOM0_MEM_MB}" \
+		XEN_VERSION="${XEN_VERSION}" \
+		bash "${OVERLAY_SRC}/hardware/macbook-air-2013/apple-efi-setup.sh" \
+			|| warn "apple-efi-setup.sh failed — run it manually after kernel build"
+	else
+		warn "apple-efi-setup.sh not found — see hardware/macbook-air-2013/README.md"
+	fi
+fi
+
 # --- done --------------------------------------------------------------
 
 info "=================================================="
@@ -333,3 +442,9 @@ info "  2. Copy /usr/lib/xen/boot/xen.gz to /boot/"
 info "  3. Reboot and verify Xen is the bootloader: xl info"
 info "  4. Verify /etc/conf.d/qubes-gui-daemon: QUBES_GUI_DM is set to your DM (${DM_CHOICE:-xdm})"
 info "  5. Populate /etc/qubes/policy.d/ with your qrexec policies"
+
+# --- write bootstrapped sentinel ---------------------------------------
+
+mkdir -p /etc/qubentoo
+echo "Bootstrapped on $(date -u)" > "${SENTINEL}"
+ok "Bootstrap complete. Sentinel written to ${SENTINEL}"

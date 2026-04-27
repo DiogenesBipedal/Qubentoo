@@ -1,0 +1,7 @@
+# /etc/conf.d/qubes-firewall — configuration for the Qubes firewall service
+
+# Directory containing per-VM nftables rule fragments pushed by dom0
+QUBES_FIREWALL_DIR="/etc/qubes/firewall.d"
+
+# Set to "yes" to log dropped packets (increases syslog noise)
+QUBES_FIREWALL_LOG_DROP="no"

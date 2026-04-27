@@ -51,7 +51,7 @@ QUBES_PKGS=(
 	"app-emulation/xen"
 	"app-emulation/xen-tools"
 	"dev-python/xen"
-	"sys-apps/qubes-db"
+	"sys-apps/qubes-core-qubesdb"
 	"dev-python/qubesdb"
 	"sys-apps/qubes-core-vchan-xen"
 	"sys-apps/qubes-libvchan"
@@ -60,6 +60,9 @@ QUBES_PKGS=(
 	"sys-apps/qubes-rpc-proxy"
 	"gui-daemon/qubes-gui-common"
 	"gui-daemon/qubes-gui-daemon"
+	"net-proxy/qubes-firewall"
+	"sys-apps/qubes-input-proxy"
+	"gui-apps/qubes-manager"
 )
 
 XEN_VERSION="${XEN_VERSION:-4.17.5}"
@@ -128,7 +131,7 @@ _head "Overlay Conflict Detection"
 
 # Packages that appear from ::gentoo when they should come from ::qubentoo
 QUBENTOO_ATOMS=(
-	"sys-apps/qubes-db"
+	"sys-apps/qubes-core-qubesdb"
 	"sys-apps/qubes-core-vchan-xen"
 	"sys-apps/qubes-libvchan"
 	"sys-apps/qubes-core-admin"
@@ -136,6 +139,9 @@ QUBENTOO_ATOMS=(
 	"sys-apps/qubes-rpc-proxy"
 	"gui-daemon/qubes-gui-common"
 	"gui-daemon/qubes-gui-daemon"
+	"net-proxy/qubes-firewall"
+	"sys-apps/qubes-input-proxy"
+	"gui-apps/qubes-manager"
 	"dev-python/qubesdb"
 )
 

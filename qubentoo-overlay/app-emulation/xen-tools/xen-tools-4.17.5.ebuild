@@ -84,6 +84,7 @@ src_install() {
 	# conf.d files
 	newconfd "${FILESDIR}/confd/xendomains"  xendomains
 	newconfd "${FILESDIR}/confd/xencommons"  xencommons
+	newconfd "${FILESDIR}/confd/xenconsoled" xenconsoled
 
 	# Qubes expects xl config in /etc/xen
 	keepdir /etc/xen/auto

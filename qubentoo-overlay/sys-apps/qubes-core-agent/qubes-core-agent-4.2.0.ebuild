@@ -21,7 +21,7 @@ REQUIRED_USE="${PYTHON_REQUIRED_USE}"
 
 RDEPEND="
 	${PYTHON_DEPS}
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 	sys-apps/qubes-libvchan
 	sys-apps/qubes-rpc-proxy
 	dev-python/qubesdb[${PYTHON_SINGLE_USEDEP}]

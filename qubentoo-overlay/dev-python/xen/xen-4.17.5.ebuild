@@ -42,6 +42,17 @@ BDEPEND="
 # We build only from the Python subdirectory of the Xen tools tree
 S="${WORKDIR}/xen-${PV}/tools/python"
 
+pkg_pretend() {
+	# Warn if the installed xen-tools version doesn't match this package's PV.
+	# A mismatch means the Python bindings were built against a different Xen
+	# ABI than what is running — linking will likely fail or produce wrong results.
+	if ! has_version "~app-emulation/xen-tools-${PV}"; then
+		ewarn "dev-python/xen-${PV} expects app-emulation/xen-tools-${PV}."
+		ewarn "Installed xen-tools version does not match — build or runtime"
+		ewarn "failures are likely.  Ensure both packages are at ${PV}."
+	fi
+}
+
 pkg_setup() {
 	python-single-r1_pkg_setup
 }

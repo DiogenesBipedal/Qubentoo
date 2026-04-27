@@ -1,0 +1,18 @@
+# Xen stubdomain configuration example
+# Include relevant lines in your VM's xl config to enable device model isolation.
+#
+# Installed by app-emulation/qubes-vmm-xen-stubdom-linux
+
+# Use the Linux-based stubdomain instead of running QEMU directly in dom0
+device_model_stubdomain_override = 1
+
+# Use the modern QEMU Xen device model (required for stubdom)
+device_model_version = "qemu-xen"
+
+# Paths to the stubdomain kernel and initramfs (set automatically by xl;
+# override here only if you installed them to a non-default location)
+# device_model_stubdomain_kernel = "/usr/lib/xen/boot/stubdom-linux-kernel"
+# device_model_stubdomain_ramdisk = "/usr/lib/xen/boot/stubdom-linux-rootfs"
+
+# Memory allocated to the stubdomain itself (in MB)
+device_model_stubdomain_memory = 128

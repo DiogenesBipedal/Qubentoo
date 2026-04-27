@@ -1,16 +1,18 @@
 #!/sbin/openrc-run
-# QubesDB daemon — key-value store for dom0/domU policy/config
+# qubesdb — QubesDB key-value store daemon (dom0 and domU)
 
 description="QubesDB key-value store daemon"
 pidfile="/run/qubes/qubesdb.pid"
 command="/usr/sbin/qubesdb-daemon"
-command_args="--pidfile=${pidfile}"
+command_args="${QUBESDB_EXTRA_ARGS}"
 command_background="yes"
-start_stop_daemon_args="--background --make-pidfile"
+start_stop_daemon_args="--background --make-pidfile --pidfile ${pidfile}"
+
+: ${QUBESDB_SOCKET:=/run/qubes/qubesdb.sock}
 
 depend() {
-	need xenstored xencommons
-	before qubes-core-admin qubes-gui-daemon
+	need xenstored
+	before qubesd qubes-core qubes-agent qubes-gui-daemon
 	keyword -lxc -openvz -prefix
 }
 

@@ -232,6 +232,82 @@ else
 	_pass "BIOS/legacy boot — standard GRUB multiboot2 applies"
 fi
 
+# --- check 5b: Apple hardware specific checks -------------------------
+
+_head "Apple Hardware"
+
+APPLE_VENDOR=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)
+APPLE_PRODUCT=$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)
+
+if [[ "${APPLE_VENDOR}" == "Apple Inc." ]]; then
+	_pass "Apple hardware detected: ${APPLE_PRODUCT}"
+
+	# VT-d on Apple: Haswell (2013) exposes VT-d but may need intel_iommu=on
+	if dmesg 2>/dev/null | grep -qi "DMAR.*IOMMU\|Intel.*IOMMU"; then
+		_pass "Intel VT-d (DMAR) visible in dmesg — IOMMU should work"
+	else
+		_warn "Apple EFI may require 'intel_iommu=on' in kernel cmdline to activate VT-d"
+		_warn "       bootstrap-dom0.sh adds this automatically on Apple hardware"
+	fi
+
+	# BCM4360 WiFi check
+	if lspci 2>/dev/null | grep -q "BCM4360\|BCM43602\|BCM4352"; then
+		bcm_dev=$(lspci | grep -E "BCM4360|BCM43602|BCM4352" | head -1)
+		_warn "Broadcom WiFi found: ${bcm_dev}"
+		_warn "       Needs net-wireless/broadcom-sta (wl driver) for full support"
+		_warn "       bootstrap-dom0.sh emerges this automatically on Apple hardware"
+		if modinfo wl >/dev/null 2>&1; then
+			_pass "broadcom-sta (wl) module is installed"
+		else
+			_warn "wl module not yet installed — will be emerged during bootstrap"
+		fi
+	else
+		_warn "No Broadcom BCM4360/4352 detected via lspci (may not be loaded yet)"
+	fi
+
+	# xen.efi check for Apple EFI
+	if [[ -d /sys/firmware/efi ]]; then
+		xen_efi=$(find /boot/efi -name "BOOTx64.EFI" -o -name "xen.efi" 2>/dev/null | head -1)
+		if [[ -n "${xen_efi}" ]]; then
+			_pass "Xen EFI binary present: ${xen_efi}"
+		else
+			_warn "xen.efi not yet installed as EFI fallback"
+			_warn "       Run scripts/apple-efi-setup.sh after bootstrap to set this up"
+		fi
+		xen_cfg=$(find /boot/efi -name "xen.cfg" 2>/dev/null | head -1)
+		if [[ -n "${xen_cfg}" ]]; then
+			_pass "xen.cfg found: ${xen_cfg}"
+		else
+			_warn "xen.cfg not found — apple-efi-setup.sh will create it"
+		fi
+	fi
+
+	# Apple kernel config supplement
+	APPLE_CFG_PATH=""
+	for p in \
+		"$(dirname "$0")/../hardware/macbook-air-2013/kernel.config" \
+		"/root/qubentoo-overlay/hardware/macbook-air-2013/kernel.config" \
+		"/var/db/repos/qubentoo/hardware/macbook-air-2013/kernel.config"; do
+		[[ -f "${p}" ]] && APPLE_CFG_PATH="${p}" && break
+	done
+	if [[ -n "${APPLE_CFG_PATH}" ]]; then
+		_pass "Apple kernel config supplement found: ${APPLE_CFG_PATH}"
+	else
+		_warn "Apple kernel config supplement not found"
+		_warn "       Expected: kernel/qubentoo-apple-mba2013.config in overlay"
+	fi
+
+	# applesmc driver (fan / temperature / backlight)
+	if modinfo applesmc >/dev/null 2>&1 || lsmod 2>/dev/null | grep -q applesmc; then
+		_pass "applesmc module present (fan/backlight control)"
+	else
+		_warn "applesmc not loaded — fan/backlight won't work until after kernel build"
+	fi
+
+else
+	_info "Not Apple hardware (${APPLE_VENDOR:-unknown vendor}) — skipping Apple checks"
+fi
+
 # --- check 6: Portage and overlay health ------------------------------
 
 _head "Portage and Overlay"

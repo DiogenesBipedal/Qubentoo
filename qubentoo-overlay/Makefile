@@ -37,13 +37,19 @@ help:
 	@printf '  %-20s %s\n' 'make verify'           'Run repoman QA scan on the overlay'
 	@printf '  %-20s %s\n' 'make verify-strict'    'Same as verify but fail on warnings too'
 	@printf '  %-20s %s\n' 'make bootstrap'        'Run the full dom0 bootstrap (prompts for confirmation)'
+	@printf '  %-20s %s\n' 'make install'          'Install Qubentoo onto a target disk from live CD'
+	@printf '  %-20s %s\n' 'make kernel'           'Build and install dom0 kernel from kernel/qubentoo-dom0.config'
 	@printf '  %-20s %s\n' 'make gentoo-template'  'Build the Gentoo PV domU template tarball'
 	@printf '  %-20s %s\n' 'make all'              'preflight → dry-run → manifests → verify'
 	@printf '\n'
 	@printf '$(BOLD)Options (set via environment):$(RESET)\n'
 	@printf '  %-20s %s\n' 'VERBOSE=1'             'Show full pretend/emerge output'
-	@printf '  %-20s %s\n' 'DM_CHOICE=lightdm'     'Set display manager for bootstrap non-interactively'
-	@printf '  %-20s %s\n' 'GRUB_DISK=/dev/sda'    'Target disk for grub-install'
+	@printf '  %-20s %s\n' 'DM_CHOICE=lightdm'     'Set display manager for bootstrap/install non-interactively'
+	@printf '  %-20s %s\n' 'GRUB_DISK=/dev/sda'    'Target disk for grub-install (bootstrap)'
+	@printf '  %-20s %s\n' 'TARGET_DISK=/dev/sda'  'Target disk for installer (make install)'
+	@printf '  %-20s %s\n' 'HOSTNAME=qubentoo'     'Hostname for installed system'
+	@printf '  %-20s %s\n' 'TIMEZONE=UTC'          'Timezone for installed system'
+	@printf '  %-20s %s\n' 'LUKS=1'                'Enable LUKS root encryption (make install)'
 	@printf '  %-20s %s\n' 'XEN_VERSION=4.17.5'    'Xen version to build'
 	@printf '  %-20s %s\n' 'OVERLAY_SRC=<path>'    'Local overlay directory (default: this repo)'
 	@printf '\n'
@@ -78,6 +84,34 @@ verify-strict:
 	@printf '$(BOLD)>>> Running repoman QA scan (strict — warnings = failure)...$(RESET)\n'
 	@OVERLAY_DIR="$(OVERLAY_DIR)" bash "$(SCRIPTS)/verify-overlay.sh" --strict
 
+.PHONY: kernel
+kernel: preflight
+	@if [ ! -d /usr/src/linux ]; then \
+		printf '\e[1;31mERROR:\e[0m /usr/src/linux not found. Emerge gentoo-sources first.\n'; \
+		exit 1; \
+	fi
+	@printf '$(BOLD)>>> Building Qubentoo dom0 kernel...$(RESET)\n'
+	cp "$(OVERLAY_DIR)/kernel/qubentoo-dom0.config" /tmp/qubentoo.config
+	cd /usr/src/linux && \
+		make defconfig && \
+		scripts/kconfig/merge_config.sh .config /tmp/qubentoo.config
+	@printf '$(BOLD)>>> Verifying critical config flags...$(RESET)\n'
+	@grep -q 'CONFIG_XEN=y'                     /usr/src/linux/.config || \
+		{ echo 'FAIL: CONFIG_XEN missing';        exit 1; }
+	@grep -q 'CONFIG_XEN_DOM0=y'                /usr/src/linux/.config || \
+		{ echo 'FAIL: CONFIG_XEN_DOM0 missing';   exit 1; }
+	@grep -q '# CONFIG_XEN_PVCALLS_FRONTEND is not set' /usr/src/linux/.config || \
+		{ echo 'FAIL: PVCALLS_FRONTEND not disabled'; exit 1; }
+	@printf '$(BOLD)>>> Config verified. Building...$(RESET)\n'
+	cd /usr/src/linux && \
+		make -j$$(nproc) 2>&1 | tee /var/log/qubentoo-kernel-build.log && \
+		make modules_install && \
+		make install
+	@printf '$(BOLD)>>> Kernel installed. Updating GRUB...$(RESET)\n'
+	grub-mkconfig -o /boot/grub/grub.cfg
+	@grep -q 'xen' /boot/grub/grub.cfg || \
+		printf '\e[1;33mWARNING:\e[0m No Xen stanza in grub.cfg. See docs/troubleshooting/grub-xen-missing.md\n'
+
 .PHONY: all
 all: preflight dry-run manifests verify
 	@printf '\n$(BOLD)>>> All pre-bootstrap checks complete.$(RESET)\n'
@@ -111,6 +145,22 @@ _bootstrap-guard:
 		printf 'Aborted.\n'; \
 		exit 1; \
 	fi
+
+.PHONY: install
+install:
+	@if [[ $$(id -u) -ne 0 ]]; then \
+		printf '\e[1;31mERROR:\e[0m install requires root\n'; \
+		exit 1; \
+	fi
+	@printf '$(BOLD)>>> Running Qubentoo installer...$(RESET)\n'
+	@OVERLAY_SRC="$(OVERLAY_DIR)" \
+	 DM_CHOICE="$(DM_CHOICE)" \
+	 bash "$(SCRIPTS)/install-qubentoo.sh" \
+	   --disk "$(TARGET_DISK)" \
+	   --dm   "$(DM_CHOICE)" \
+	   $(if $(HOSTNAME),--hostname "$(HOSTNAME)") \
+	   $(if $(TIMEZONE),--timezone "$(TIMEZONE)") \
+	   $(if $(filter 1,$(LUKS)),--luks)
 
 .PHONY: gentoo-template
 gentoo-template:

@@ -24,7 +24,7 @@ RDEPEND="
 	gui-daemon/qubes-gui-common
 	sys-apps/qubes-core-admin
 	sys-apps/qubes-libvchan
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 	x11-libs/libX11
 	x11-libs/libXcomposite
 	x11-libs/libXdamage

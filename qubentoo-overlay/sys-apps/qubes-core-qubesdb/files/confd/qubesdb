@@ -1,0 +1,7 @@
+# /etc/conf.d/qubesdb — configuration for the QubesDB daemon
+
+# Path to the qubesdb Unix socket
+QUBESDB_SOCKET="/run/qubes/qubesdb.sock"
+
+# Extra arguments passed to qubesdb-daemon (see qubesdb-daemon --help)
+QUBESDB_EXTRA_ARGS=""

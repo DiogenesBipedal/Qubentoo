@@ -1,0 +1,9 @@
+# xenconsoled configuration
+# Log level: off, error, warn, info, verbose, trace
+XENCONSOLED_LOG_LEVEL="warn"
+
+# Log to file instead of syslog (leave empty to log to syslog)
+XENCONSOLED_LOG_FILE=""
+
+# Extra options passed to xenconsoled (see xenconsoled --help)
+XENCONSOLED_OPTS=""

@@ -247,6 +247,201 @@ jobs:
           echo "All Makefile targets parse successfully"
 
   # ---------------------------------------------------------------------------
+  # Job 7: emerge --pretend dry-run for all overlay packages
+  # Validates that Portage can resolve the full dependency graph without
+  # conflicts.  Does not compile anything.
+  # ---------------------------------------------------------------------------
+  emerge-pretend:
+    name: emerge --pretend (dep graph check)
+    runs-on: ubuntu-latest
+    container:
+      image: gentoo/stage3:amd64-hardened-openrc
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+        with:
+          path: qubentoo-overlay
+
+      - name: Update Portage tree
+        run: |
+          emerge-webrsync --quiet 2>&1 | tail -5 || \
+          emaint sync -a --quiet 2>&1 | tail -5
+
+      - name: Register overlay
+        run: |
+          emerge --quiet --noreplace app-eselect/eselect-repository
+          eselect repository create qubentoo \
+            "${GITHUB_WORKSPACE}/qubentoo-overlay"
+          emaint sync -r qubentoo 2>/dev/null || true
+
+      - name: Pretend emerge — dom0 packages
+        run: |
+          emerge --pretend --verbose --autounmask=n \
+            app-emulation/xen \
+            app-emulation/xen-tools \
+            dev-python/xen \
+            sys-apps/qubes-core-qubesdb \
+            dev-python/qubesdb \
+            sys-apps/qubes-core-vchan-xen \
+            sys-apps/qubes-libvchan \
+            sys-apps/qubes-core-admin \
+            sys-apps/qubes-core-admin-linux \
+            sys-apps/qubes-rpc-proxy \
+            gui-daemon/qubes-gui-common \
+            gui-daemon/qubes-gui-daemon \
+            gui-apps/qubes-manager \
+            sys-apps/qubes-input-proxy \
+            2>&1 | tee emerge-pretend-dom0.log
+          grep -E '^!!!' emerge-pretend-dom0.log && exit 1 || true
+
+      - name: Pretend emerge — domU / template packages
+        run: |
+          emerge --pretend --verbose --autounmask=n \
+            sys-apps/qubes-core-qubesdb \
+            dev-python/qubesdb \
+            sys-apps/qubes-core-vchan-xen \
+            sys-apps/qubes-libvchan \
+            sys-apps/qubes-rpc-proxy \
+            sys-apps/qubes-core-agent \
+            gui-daemon/qubes-gui-common \
+            gui-daemon/qubes-gui-agent \
+            net-proxy/qubes-firewall \
+            sys-apps/qubes-input-proxy \
+            2>&1 | tee emerge-pretend-domu.log
+          grep -E '^!!!' emerge-pretend-domu.log && exit 1 || true
+
+      - name: Upload pretend logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emerge-pretend-logs
+          path: |
+            emerge-pretend-dom0.log
+            emerge-pretend-domu.log
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 8: separate domU / template package set pretend
+  # ---------------------------------------------------------------------------
+  template-pretend:
+    name: emerge --pretend (domU template set)
+    runs-on: ubuntu-latest
+    container:
+      image: gentoo/stage3:amd64-hardened-openrc
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+        with:
+          path: qubentoo-overlay
+
+      - name: Update Portage tree
+        run: |
+          emerge-webrsync --quiet 2>&1 | tail -5 || \
+          emaint sync -a --quiet 2>&1 | tail -5
+
+      - name: Register overlay
+        run: |
+          emerge --quiet --noreplace app-eselect/eselect-repository
+          eselect repository create qubentoo \
+            "${GITHUB_WORKSPACE}/qubentoo-overlay"
+          emaint sync -r qubentoo 2>/dev/null || true
+
+      - name: Pretend domU package set
+        run: |
+          emerge --pretend --verbose --autounmask=n \
+            sys-apps/qubes-core-qubesdb \
+            sys-apps/qubes-libvchan \
+            sys-apps/qubes-core-vchan-xen \
+            sys-apps/qubes-core-agent \
+            net-proxy/qubes-firewall \
+            sys-apps/qubes-input-proxy \
+            gui-daemon/qubes-gui-common \
+            gui-daemon/qubes-gui-agent \
+            2>&1 | tee template-pretend.log
+          grep -E '^!!!' template-pretend.log && exit 1 || true
+
+      - name: Upload pretend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-pretend-log
+          path: template-pretend.log
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 9: verify critical kernel config options are set / unset
+  # ---------------------------------------------------------------------------
+  kernel-config-check:
+    name: Kernel config critical flags
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+
+      - name: Verify required options are present
+        run: |
+          set -euo pipefail
+          CONF="kernel/qubentoo-dom0.config"
+          FAIL=0
+          check_set() {
+            grep -q "^${1}=y" "${CONF}" || { echo "FAIL: ${1} not set"; FAIL=1; }
+          }
+          check_unset() {
+            grep -qE "^# ${1} is not set" "${CONF}" || { echo "FAIL: ${1} should be unset"; FAIL=1; }
+          }
+          check_set CONFIG_XEN
+          check_set CONFIG_XEN_DOM0
+          check_set CONFIG_HARDENED_USERCOPY
+          check_set CONFIG_STACKPROTECTOR_STRONG
+          check_set CONFIG_INTEL_IOMMU
+          check_set CONFIG_AMD_IOMMU
+          check_unset CONFIG_XEN_PVCALLS_FRONTEND
+          exit ${FAIL}
+
+  # ---------------------------------------------------------------------------
+  # Job 10: pkgcheck overlay lint (metadata, EAPI, USE flags)
+  # ---------------------------------------------------------------------------
+  overlay-lint:
+    name: pkgcheck overlay lint
+    runs-on: ubuntu-latest
+    container:
+      image: gentoo/stage3:amd64-hardened-openrc
+      options: --security-opt seccomp=unconfined
+
+    steps:
+      - name: Checkout overlay
+        uses: actions/checkout@v4
+        with:
+          path: qubentoo-overlay
+
+      - name: Update Portage tree
+        run: |
+          emerge-webrsync --quiet 2>&1 | tail -5 || \
+          emaint sync -a --quiet 2>&1 | tail -5
+
+      - name: Install pkgcheck
+        run: emerge --quiet --noreplace dev-util/pkgcheck
+
+      - name: Run pkgcheck
+        working-directory: qubentoo-overlay
+        run: |
+          pkgcheck scan --repo . 2>&1 | tee pkgcheck-report.txt
+          grep -i "^error" pkgcheck-report.txt && exit 1 || true
+
+      - name: Upload pkgcheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkgcheck-report
+          path: qubentoo-overlay/pkgcheck-report.txt
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
   # Summary job — required status check for branch protection
   # ---------------------------------------------------------------------------
   ci-passed:
@@ -259,6 +454,10 @@ jobs:
       - openrc-syntax
       - shellcheck
       - makefile-check
+      - emerge-pretend
+      - template-pretend
+      - kernel-config-check
+      - overlay-lint
     if: always()
 
     steps:

@@ -1,0 +1,46 @@
+#!/sbin/openrc-run
+# qubes-input-proxy — isolates input devices between Qubes VMs
+
+description="Qubes OS input device isolation proxy"
+pidfile="/run/qubes/qubes-input-proxy.pid"
+
+: ${QUBES_INPUT_ROLE:=receiver}
+: ${QUBES_INPUT_DEVICE:=}
+
+depend() {
+	need qubesdb
+	after qubes-agent
+	keyword -lxc -openvz -prefix
+}
+
+start() {
+	ebegin "Starting Qubes input proxy (${QUBES_INPUT_ROLE})"
+	checkpath -d -m 0755 /run/qubes
+
+	case "${QUBES_INPUT_ROLE}" in
+		sender)
+			start-stop-daemon --start \
+				--background \
+				--make-pidfile --pidfile "${pidfile}" \
+				--exec /usr/sbin/qubes-input-sender \
+				-- ${QUBES_INPUT_DEVICE:+--device "${QUBES_INPUT_DEVICE}"}
+			;;
+		receiver)
+			start-stop-daemon --start \
+				--background \
+				--make-pidfile --pidfile "${pidfile}" \
+				--exec /usr/sbin/qubes-input-receiver
+			;;
+		*)
+			eend 1 "Unknown QUBES_INPUT_ROLE: ${QUBES_INPUT_ROLE} (must be sender or receiver)"
+			return 1
+			;;
+	esac
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping Qubes input proxy"
+	start-stop-daemon --stop --pidfile "${pidfile}" --retry TERM/5/KILL/2
+	eend $?
+}

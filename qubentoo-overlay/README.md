@@ -94,18 +94,28 @@ qubentoo-overlay/
 │   └── xen-tools/              ← xl, xenstore, xenstored, xendomains
 │
 ├── sys-apps/
-│   ├── qubes-db/               ← QubesDB key-value store
+│   ├── qubes-core-qubesdb/     ← QubesDB C daemon (dom0 + domU)
 │   ├── qubes-core-vchan-xen/   ← vchan transport
 │   ├── qubes-libvchan/         ← vchan library
 │   ├── qubes-core-admin/       ← qubesd (dom0 admin daemon)
 │   ├── qubes-core-admin-linux/ ← Linux dom0 specifics
 │   ├── qubes-rpc-proxy/        ← qrexec policy engine
-│   └── qubes-core-agent/       ← domU guest agent
+│   ├── qubes-core-agent/       ← domU guest agent
+│   └── qubes-input-proxy/      ← input device isolation (dom0 sender / AppVM receiver)
 │
 ├── gui-daemon/
 │   ├── qubes-gui-common/       ← shared GUI protocol headers
 │   ├── qubes-gui-daemon/       ← dom0 X11 GUI daemon
 │   └── qubes-gui-agent/        ← domU GUI agent
+│
+├── gui-apps/
+│   └── qubes-manager/          ← PyQt5 dom0 VM management GUI
+│
+├── net-proxy/
+│   └── qubes-firewall/         ← nftables firewall for NetVMs / AppVMs
+│
+├── app-emulation/
+│   └── qubes-vmm-xen-stubdom-linux/  ← Xen stubdomain kernel (optional, PCI passthrough)
 │
 ├── dev-python/
 │   ├── qubesdb/                ← Python bindings for QubesDB
@@ -119,14 +129,19 @@ qubentoo-overlay/
 │   ├── test-bootstrap.sh       ← emerge --pretend dry run
 │   ├── bootstrap-dom0.sh       ← full dom0 install
 │   ├── build-gentoo-template.sh← Gentoo domU template tarball
+│   ├── install-qubentoo.sh     ← full disk installer (live CD)
 │   ├── gen-manifests.sh        ← generate Portage Manifest files
 │   └── verify-overlay.sh       ← repoman QA scan
+│
+├── catalyst/
+│   └── qubentoo-livecd.spec    ← Catalyst ISO recipe (paths need updating)
 │
 └── docs/
     ├── dependency-graph.md     ← full package dependency tree + Mermaid
     ├── display-manager.md      ← DM configuration guide
     └── testing/
-        └── nested-vm-test-plan.md ← KVM pre-hardware test procedure
+        ├── nested-vm-test-plan.md ← KVM pre-hardware test procedure
+        └── consistency-check.md   ← manual QA checklist
 ```
 
 ---
@@ -141,6 +156,8 @@ qubentoo-overlay/
 | `make verify` | Run `repoman scan` QA check |
 | `make verify-strict` | Same but fail on warnings too |
 | `make bootstrap` | Full dom0 install (requires root + YES confirmation) |
+| `make install` | Disk installer from live CD (set `TARGET_DISK=`, `HOSTNAME=`, `TIMEZONE=`, `LUKS=1`) |
+| `make kernel` | Build and install the dom0 kernel from `kernel/qubentoo-dom0.config` |
 | `make gentoo-template` | Build Gentoo domU template tarball |
 | `make all` | preflight → dry-run → manifests → verify |
 | `make clean` | Remove generated log files |
@@ -151,20 +168,53 @@ qubentoo-overlay/
 
 | Component | Status |
 |-----------|--------|
-| Overlay scaffold (metadata, eclass, profiles) | ✅ Complete |
-| Xen 4.17.5 ebuilds (hypervisor + tools) | ✅ Complete |
-| Qubes dom0 ebuilds (6 packages) | ✅ Complete |
-| Qubes domU agent ebuilds | ✅ Complete |
-| GUI stack ebuilds (dom0 + domU) | ✅ Complete |
-| Python binding stubs (qubesdb, xen) | ✅ Complete |
-| Kernel config fragment | ✅ Complete |
-| Bootstrap script | ✅ Complete |
-| Gentoo template build script | ✅ Complete |
-| Manifest generation | ⏳ Needs live Portage host |
-| Xen boot on real hardware | ⏳ Not yet validated |
-| Qubes Manager GUI | ❌ Not started |
-| `qvm-*` command suite | ❌ Not started |
-| USB / audio qube configuration | ❌ Not started |
+| Overlay scaffold (metadata, eclass, profiles) | Complete |
+| Xen 4.17.5 ebuilds (hypervisor + tools) | Complete |
+| Qubes dom0 ebuilds (qubesdb, vchan, admin, gui-daemon) | Complete |
+| Qubes domU agent ebuilds | Complete |
+| GUI stack ebuilds (dom0 + domU) | Complete |
+| Qubes Manager GUI (`gui-apps/qubes-manager`) | Ebuild complete, untested |
+| Input proxy (`sys-apps/qubes-input-proxy`) | Ebuild complete, untested |
+| Firewall (`net-proxy/qubes-firewall`) | Ebuild complete, untested |
+| Xen stubdom (`app-emulation/qubes-vmm-xen-stubdom-linux`) | Ebuild complete, RESTRICT=network-sandbox |
+| Python binding stubs (qubesdb, xen) | Complete |
+| Kernel config fragment (Linux 6.6 LTS) | Complete |
+| Bootstrap script | Complete |
+| Disk installer (`scripts/install-qubentoo.sh`) | Complete, untested on hardware |
+| Catalyst ISO recipe | Skeleton only — paths need updating |
+| Gentoo template build script | Complete |
+| Manifest generation | Needs live Portage host |
+| Xen boot on real hardware | Not yet validated |
+| `qvm-*` command suite | Not started |
+| USB / audio qube configuration | Not started |
+
+---
+
+## Installer
+
+To install Qubentoo onto a physical disk from a Gentoo live CD:
+
+```bash
+# Minimum: specify the target disk
+sudo bash scripts/install-qubentoo.sh --disk /dev/sda
+
+# With full options:
+sudo bash scripts/install-qubentoo.sh \
+  --disk /dev/sda \
+  --hostname mymachine \
+  --timezone Europe/Berlin \
+  --dm lightdm \
+  --luks
+```
+
+Or via make:
+
+```bash
+sudo make install TARGET_DISK=/dev/sda HOSTNAME=mymachine TIMEZONE=UTC LUKS=1
+```
+
+A Catalyst ISO recipe is in `catalyst/qubentoo-livecd.spec` — update
+the placeholder paths before running `catalyst -f`.
 
 ---
 

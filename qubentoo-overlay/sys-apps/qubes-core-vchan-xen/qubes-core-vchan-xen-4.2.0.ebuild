@@ -18,7 +18,7 @@ IUSE=""
 
 RDEPEND="
 	app-emulation/xen-tools
-	sys-apps/qubes-db
+	sys-apps/qubes-core-qubesdb
 "
 DEPEND="${RDEPEND}
 	app-emulation/xen

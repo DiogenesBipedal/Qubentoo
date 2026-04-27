@@ -181,16 +181,26 @@ mount --bind "${OVERLAY_SRC}" "${ROOTFS}/var/db/repos/qubentoo"
 in_chroot "eselect repository create qubentoo /var/db/repos/qubentoo" || true
 
 cat >> "${ROOTFS}/etc/portage/package.accept_keywords/qubentoo" << 'EOF'
-sys-apps/qubes-db ~amd64
+sys-apps/qubes-core-qubesdb ~amd64
 sys-apps/qubes-core-vchan-xen ~amd64
 sys-apps/qubes-libvchan ~amd64
+sys-apps/qubes-core-agent ~amd64
+net-proxy/qubes-firewall ~amd64
+sys-apps/qubes-input-proxy ~amd64
+gui-daemon/qubes-gui-common ~amd64
+gui-daemon/qubes-gui-agent ~amd64
 EOF
 
 info "Emerging Qubes guest components..."
 QUBES_GUEST_PKGS=(
-	"sys-apps/qubes-db"
-	"sys-apps/qubes-core-vchan-xen"
+	"sys-apps/qubes-core-qubesdb"
 	"sys-apps/qubes-libvchan"
+	"sys-apps/qubes-core-vchan-xen"
+	"sys-apps/qubes-core-agent"
+	"net-proxy/qubes-firewall"
+	"sys-apps/qubes-input-proxy"
+	"gui-daemon/qubes-gui-common"
+	"gui-daemon/qubes-gui-agent"
 )
 for pkg in "${QUBES_GUEST_PKGS[@]}"; do
 	in_chroot "emerge --quiet --noreplace '${pkg}'" \
@@ -222,8 +232,10 @@ ok "/etc/qubes/guid.conf written"
 
 # --- step 10: OpenRC services inside template --------------------------
 
-info "Enabling qubes-db service in template..."
-in_chroot "rc-update add qubes-db default" || warn "rc-update failed (non-fatal at build time)"
+info "Enabling Qubes services in template..."
+for svc in qubesdb qubes-agent qubes-qrexec-agent qubes-firewall qubes-gui-agent; do
+	in_chroot "rc-update add ${svc} default" || warn "rc-update ${svc} failed (non-fatal at build time)"
+done
 
 # --- step 11: set hostname and locale ----------------------------------
 
