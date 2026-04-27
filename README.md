@@ -6,9 +6,6 @@
 > The overlay scaffold, all ebuilds, and bootstrap scripts are complete.
 > Xen boot on real hardware has not yet been validated.
 > Contributions and testing reports welcome.
-
-![overlay-check](https://github.com/qubentoo/qubentoo-overlay/actions/workflows/overlay-check.yml/badge.svg)
-
 ---
 
 ## What is Qubentoo?
