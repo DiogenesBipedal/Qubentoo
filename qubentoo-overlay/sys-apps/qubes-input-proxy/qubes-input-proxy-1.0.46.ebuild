@@ -6,8 +6,8 @@ EAPI=8
 inherit qubes
 
 DESCRIPTION="Qubes OS input device isolation proxy (sender and receiver)"
-HOMEPAGE="https://github.com/QubesOS/qubes-input-proxy"
-QUBES_REPO="qubes-input-proxy"
+HOMEPAGE="https://github.com/QubesOS/qubes-app-linux-input-proxy"
+QUBES_REPO="qubes-app-linux-input-proxy"
 SRC_URI="$(qubes_src_uri)"
 
 LICENSE="GPL-2"
@@ -56,7 +56,6 @@ src_install() {
 
 	rm -rf "${D}/lib/systemd" "${D}/usr/lib/systemd" || true
 
-	# udev rule granting access to /dev/input/* inside AppVMs
 	insinto /lib/udev/rules.d
 	doins "${FILESDIR}/udev/70-qubes-input.rules"
 

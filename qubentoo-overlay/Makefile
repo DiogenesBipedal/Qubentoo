@@ -33,7 +33,7 @@ help:
 	@printf '$(BOLD)Qubentoo overlay — available targets$(RESET)\n\n'
 	@printf '  %-20s %s\n' 'make preflight'       'Check host hardware and kernel readiness'
 	@printf '  %-20s %s\n' 'make dry-run'          'Pretend emerge — validate deps without building'
-	@printf '  %-20s %s\n' 'make manifests'        'Generate Portage Manifest files for every ebuild'
+	@printf '  %-20s %s\n' 'make manifests'        'Generate Portage Manifest files (uses Docker if not on Gentoo)'
 	@printf '  %-20s %s\n' 'make verify'           'Run repoman QA scan on the overlay'
 	@printf '  %-20s %s\n' 'make verify-strict'    'Same as verify but fail on warnings too'
 	@printf '  %-20s %s\n' 'make bootstrap'        'Run the full dom0 bootstrap (prompts for confirmation)'
@@ -72,7 +72,11 @@ dry-run:
 .PHONY: manifests
 manifests:
 	@printf '$(BOLD)>>> Generating Manifest files...$(RESET)\n'
-	@OVERLAY_DIR="$(OVERLAY_DIR)" bash "$(SCRIPTS)/gen-manifests.sh"
+	@if command -v ebuild &>/dev/null; then \
+		OVERLAY_DIR="$(OVERLAY_DIR)" bash "$(SCRIPTS)/gen-manifests.sh"; \
+	else \
+		bash "$(SCRIPTS)/docker-gen-manifests.sh"; \
+	fi
 
 .PHONY: verify
 verify:

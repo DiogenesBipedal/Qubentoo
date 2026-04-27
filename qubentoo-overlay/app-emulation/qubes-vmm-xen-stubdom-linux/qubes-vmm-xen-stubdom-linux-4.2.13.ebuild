@@ -28,6 +28,9 @@ EAPI=8
 
 inherit qubes
 
+# Stubdom versioning follows Qubes releases; track required Xen separately.
+XEN_PV="4.17.5"
+
 DESCRIPTION="Xen stubdomain Linux kernel + rootfs for device model isolation"
 HOMEPAGE="https://github.com/QubesOS/qubes-vmm-xen-stubdom-linux"
 QUBES_REPO="qubes-vmm-xen-stubdom-linux"
@@ -45,8 +48,8 @@ IUSE="debug"
 RESTRICT="network-sandbox"
 
 RDEPEND="
-	~app-emulation/xen-${PV}
-	~app-emulation/xen-tools-${PV}
+	~app-emulation/xen-${XEN_PV}
+	~app-emulation/xen-tools-${XEN_PV}
 "
 DEPEND="${RDEPEND}"
 BDEPEND="
@@ -63,8 +66,8 @@ BDEPEND="
 S="${WORKDIR}/${P}"
 
 pkg_pretend() {
-	if ! has_version "~app-emulation/xen-${PV}"; then
-		ewarn "${PN}-${PV} requires app-emulation/xen-${PV}."
+	if ! has_version "~app-emulation/xen-${XEN_PV}"; then
+		ewarn "${PN}-${PV} requires app-emulation/xen-${XEN_PV}."
 		ewarn "A version mismatch will likely produce an ABI-incompatible stubdomain."
 	fi
 }
@@ -74,15 +77,12 @@ src_unpack() {
 }
 
 src_configure() {
-	# The stubdom build uses a bundled Makefile-driven buildroot.
-	# Pass Xen installation paths so it finds the hypervisor headers.
 	export XEN_ROOT="${EPREFIX}/usr"
 	export CROSS_COMPILE=""
 	use debug && export STUBDOM_DEBUG=1 || export STUBDOM_DEBUG=0
 }
 
 src_compile() {
-	# 'make download' must have been run or RESTRICT=network-sandbox lifted.
 	emake \
 		XEN_ROOT="${EPREFIX}/usr" \
 		STUBDOM_DEBUG="${STUBDOM_DEBUG:-0}" \
@@ -90,17 +90,13 @@ src_compile() {
 }
 
 src_install() {
-	# Install the stubdomain kernel image and initramfs to the location
-	# Xen's xl toolstack expects (/usr/lib/xen/boot/).
 	insinto /usr/lib/xen/boot
 	doins "${S}/stubdom-linux-rootfs"
 	doins "${S}/stubdom-linux-kernel"
 
-	# xl.conf snippet that activates stubdom device model isolation
 	insinto /etc/xen
 	doins "${FILESDIR}/stubdom.conf.example"
 
-	# Optional: qemu-stubdom wrapper used by xl when dm_type = "qemu-xen-traditional"
 	if [[ -f "${S}/qemu-dm-wrapper" ]]; then
 		dobin "${S}/qemu-dm-wrapper"
 	fi

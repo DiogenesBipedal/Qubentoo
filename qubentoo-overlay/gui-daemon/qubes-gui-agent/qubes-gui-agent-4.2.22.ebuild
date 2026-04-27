@@ -66,11 +66,9 @@ src_install() {
 
 	rm -rf "${D}/lib/systemd" "${D}/usr/lib/systemd" || true
 
-	# OpenRC service + conf.d with DM-configurable dependency (Issue 4)
 	newinitd "${FILESDIR}/openrc/qubes-gui-agent" qubes-gui-agent
 	newconfd "${FILESDIR}/confd/qubes-gui-agent"  qubes-gui-agent
 
-	# GUI agent config
 	insinto /etc/qubes
 	doins "${FILESDIR}/guid.conf"
 }

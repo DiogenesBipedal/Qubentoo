@@ -72,7 +72,6 @@ src_install() {
 	newinitd "${FILESDIR}/openrc/qubes-gui-daemon"  qubes-gui-daemon
 	newconfd "${FILESDIR}/confd/qubes-gui-daemon"   qubes-gui-daemon
 
-	# guid configuration directory
 	keepdir /etc/qubes/guid.conf.d
 	insinto /etc/qubes
 	doins "${FILESDIR}/guid.conf"

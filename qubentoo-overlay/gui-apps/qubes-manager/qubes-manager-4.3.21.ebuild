@@ -14,10 +14,13 @@ EAPI=8
 PYTHON_COMPAT=( python3_{10,11,12} )
 inherit python-single-r1 qubes xdg-utils
 
+# Upstream tags this release as v${PV}-1; MY_PV handles the archive name.
+MY_PV="${PV}-1"
+
 DESCRIPTION="Qubes OS dom0 graphical VM management interface (PyQt5)"
 HOMEPAGE="https://github.com/QubesOS/qubes-manager"
 QUBES_REPO="qubes-manager"
-SRC_URI="$(qubes_src_uri)"
+SRC_URI="https://github.com/QubesOS/${QUBES_REPO}/archive/v${MY_PV}.tar.gz -> ${P}.tar.gz"
 
 LICENSE="GPL-2"
 SLOT="0"
@@ -51,14 +54,15 @@ BDEPEND="
 	dev-qt/linguist-tools
 "
 
-S="${WORKDIR}/${P}"
+S="${WORKDIR}/${QUBES_REPO}-${MY_PV}"
 
 pkg_setup() {
 	python-single-r1_pkg_setup
 }
 
 src_unpack() {
-	qubes_src_unpack
+	default
+	# GitHub extracts as ${QUBES_REPO}-${MY_PV}/ — no rename needed; S is set above.
 }
 
 src_configure() {
@@ -80,8 +84,6 @@ src_install() {
 
 	rm -rf "${D}/lib/systemd" "${D}/usr/lib/systemd" || true
 
-	# Desktop entry (may already be installed by make install above; this
-	# ensures it ends up in the right place under Gentoo's layout)
 	if [[ ! -f "${D}${EPREFIX}/usr/share/applications/qubes-manager.desktop" ]]; then
 		insinto /usr/share/applications
 		doins "${FILESDIR}/qubes-manager.desktop"
